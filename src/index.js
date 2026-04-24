@@ -11,7 +11,7 @@ fastify.get("/health", async (req, reply) => {
 	return { ok: true };
 });
 
-const videoPlayerPath = await join(process.cwd(), "public", "player.html");
+const videoPlayerPath = join(process.cwd(), "public", "player.html");
 
 fastify.get("/videoplayer", async (req, reply) => {
 	const html = readFileSync(videoPlayerPath);
