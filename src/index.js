@@ -1,6 +1,6 @@
 import Fastify from "fastify";
 
-import metricsRoute from "./metrics/router";
+import metricsRoute from "./metrics/router.js";
 
 const fastify = Fastify({
 	logger: true,
