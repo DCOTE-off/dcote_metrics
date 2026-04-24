@@ -1,0 +1,15 @@
+{
+	"name": "metrics_api",
+	"version": "1.0.0",
+	"description": "metrics api for dcote video player",
+	"license": "MIT",
+	"author": "own.nurzh",
+	"type": "module",
+	"main": "index.js",
+	"scripts": {
+		"start": "node src/index.js"
+	},
+	"dependencies": {
+		"fastify": "^5.8.5"
+	}
+}
