@@ -3,7 +3,7 @@ services:
     backend:
         build:
             context: .
-            target: production
+            target: ${STAGE}
         networks:
             - client-server
         ports:

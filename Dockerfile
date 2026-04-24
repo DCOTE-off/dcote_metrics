@@ -19,7 +19,7 @@ COPY . .
 
 EXPOSE 3000
 
-CMD ["npm","run","start"]
+CMD ["npm","run","dev"]
 
 FROM base AS production
 
