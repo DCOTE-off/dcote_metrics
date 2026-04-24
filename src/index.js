@@ -11,10 +11,6 @@ fastify.get("/health", async (req, reply) => {
 	return { ok: true };
 });
 
-fastify.get("/metrics", async (req, reply) => {
-	return { ok: true };
-});
-
 const videoPlayerPath = join(process.cwd(), "public", "player.html");
 
 fastify.get("/videoplayer", async (req, reply) => {
