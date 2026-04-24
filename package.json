@@ -7,7 +7,8 @@
 	"type": "module",
 	"main": "index.js",
 	"scripts": {
-		"start": "node src/index.js"
+		"start": "node src/index.js",
+		"dev": "nodemon --ext js,html src/index.js"
 	},
 	"dependencies": {
 		"fastify": "^5.8.5"
