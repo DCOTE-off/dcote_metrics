@@ -1,12 +1,16 @@
 import Fastify from "fastify";
 
+import metricsRoute from "./metrics/metrics.router";
+
 const fastify = Fastify({
 	logger: true,
 });
 
 fastify.get("/health", async (request, reply) => {
-	return { status: "ok" };
+	return { ok: true };
 });
+
+fastify.register(metricsRoute, { prefix: "/metrics" });
 
 const start = async () => {
 	try {
