@@ -27,6 +27,7 @@ ENV NODE_ENV=production \
     NODE_OPTIONS="--max-old-space-size=256 --no-warnings" \
     NPM_CONFIG_LOGLEVEL=silent
 
+COPY package*.json ./
 
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
     npm ci --omit=dev && \
