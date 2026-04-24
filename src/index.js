@@ -1,6 +1,6 @@
 import Fastify from "fastify";
-import join from "path";
-import { read, readFileSync } from "fs";
+import { join } from "path";
+import { readFileSync } from "fs";
 import metricsRoute from "./metrics/router.js";
 
 const fastify = Fastify({
@@ -11,7 +11,7 @@ fastify.get("/health", async (req, reply) => {
 	return { ok: true };
 });
 
-const videoPlayerPath = join(process.cwd(), "public", "player.html");
+const videoPlayerPath = await join(process.cwd(), "public", "player.html");
 
 fastify.get("/videoplayer", async (req, reply) => {
 	const html = readFileSync(videoPlayerPath);
