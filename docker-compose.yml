@@ -8,6 +8,11 @@ services:
             - client-server
         ports:
             - 7654:3000
+        develop:
+            watch:
+                - action: sync
+                  path: .
+                  target: /usr/local/app
 
 networks:
     client-server: {}
