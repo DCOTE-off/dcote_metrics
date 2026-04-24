@@ -1,0 +1,13 @@
+name: metrics-api
+services:
+    backend:
+        build:
+            context: .
+            target: production
+        networks:
+            - client-server
+        ports:
+            - 7654:3000
+
+networks:
+    client-server: {}
