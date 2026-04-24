@@ -32,6 +32,10 @@ RUN --mount=type=cache,target=/root/.npm,sharing=locked \
     npm ci --omit=dev && \
     npm cache clean --force
 
+COPY . .
+
+EXPOSE 3000
+
 RUN chown -R nodejs:nodejs /usr/local/app
 USER nodejs
 
