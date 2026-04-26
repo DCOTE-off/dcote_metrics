@@ -128,7 +128,7 @@
 		</div>
 		<script>
 			//TODO: разделить
-			const ws = new WebSocket("ws://localhost:7654/ws");
+			const ws = new WebSocket("ws://localhost:7654/metrics/ws");
 			function initWebSocket(ws) {
 				ws.onopen = () => {
 					console.log("WS подключён");

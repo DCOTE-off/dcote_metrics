@@ -19,8 +19,8 @@ fastify.get("/videoplayer", async (req, reply) => {
 	reply.type("text/html").send(html);
 });
 
-fastify.register(metricsRoute, { prefix: "/metrics" });
 fastify.register(fastifyWebsocket);
+fastify.register(metricsRoute, { prefix: "/metrics" });
 
 const start = async () => {
 	try {
