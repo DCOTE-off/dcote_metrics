@@ -127,6 +127,30 @@
 			</div>
 		</div>
 		<script>
+			//TODO: разделить
+			const ws = new WebSocket("ws://localhost:7654/ws");
+			function initWebSocket(ws) {
+				ws.onopen = () => {
+					console.log("WS подключён");
+					ws.send(
+						JSON.stringify({
+							event: "connected",
+							src: params.get("src"),
+						}),
+					);
+				};
+
+				ws.onmessage = (msg) => {
+					const data = JSON.parse(msg.data);
+					console.log("Сервер ответил:", data);
+				};
+
+				ws.onclose = () => {
+					console.log("WS отключён");
+				};
+			}
+			initWebSocket(ws);
+			//
 			function onError(error) {
 				console.error(
 					"Shaka Error:",
