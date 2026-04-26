@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+import fastifyWebsocket from "@fastify/websocket";
 import { join } from "path";
 import { readFileSync } from "fs";
 import metricsRoute from "./metrics/router.js";
@@ -19,6 +20,7 @@ fastify.get("/videoplayer", async (req, reply) => {
 });
 
 fastify.register(metricsRoute, { prefix: "/metrics" });
+fastify.register(fastifyWebsocket);
 
 const start = async () => {
 	try {
