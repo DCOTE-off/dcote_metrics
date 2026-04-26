@@ -1,7 +1,7 @@
 import Fastify from "fastify";
 import fastifyWebsocket from "@fastify/websocket";
 import { join } from "path";
-import { readFile } from "fs";
+import { readFile } from "fs/promises";
 import metricsRoute from "./metrics/router.js";
 
 const fastify = Fastify({
