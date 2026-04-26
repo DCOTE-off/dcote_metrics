@@ -1,0 +1,106 @@
+{
+	"title": "Player Metrics",
+	"uid": "player-metrics",
+	"schemaVersion": 38,
+	"version": 1,
+	"refresh": "5s",
+	"time": { "from": "now-1h", "to": "now" },
+	"panels": [
+		{
+			"id": 1,
+			"type": "stat",
+			"title": "Сейчас смотрят",
+			"gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+			"options": {
+				"reduceOptions": { "calcs": ["lastNotNull"] },
+				"colorMode": "background",
+				"graphMode": "none",
+				"textMode": "auto",
+				"orientation": "auto"
+			},
+			"fieldConfig": {
+				"defaults": {
+					"color": { "mode": "thresholds" },
+					"thresholds": {
+						"mode": "absolute",
+						"steps": [
+							{ "color": "green", "value": null },
+							{ "color": "yellow", "value": 10 },
+							{ "color": "red", "value": 50 }
+						]
+					},
+					"unit": "short"
+				}
+			},
+			"targets": [
+				{
+					"datasource": { "type": "prometheus" },
+					"expr": "active_viewers",
+					"legendFormat": "Онлайн",
+					"refId": "A"
+				}
+			]
+		},
+		{
+			"id": 2,
+			"type": "stat",
+			"title": "Всего подключений",
+			"gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+			"options": {
+				"reduceOptions": { "calcs": ["lastNotNull"] },
+				"colorMode": "background",
+				"graphMode": "none",
+				"textMode": "auto",
+				"orientation": "auto"
+			},
+			"fieldConfig": {
+				"defaults": {
+					"color": { "mode": "thresholds" },
+					"thresholds": {
+						"mode": "absolute",
+						"steps": [{ "color": "blue", "value": null }]
+					},
+					"unit": "short"
+				}
+			},
+			"targets": [
+				{
+					"datasource": { "type": "prometheus" },
+					"expr": "total_connections",
+					"legendFormat": "Всего",
+					"refId": "A"
+				}
+			]
+		},
+		{
+			"id": 3,
+			"type": "timeseries",
+			"title": "Онлайн зрители",
+			"gridPos": { "x": 0, "y": 4, "w": 24, "h": 10 },
+			"options": {
+				"tooltip": { "mode": "single" },
+				"legend": { "displayMode": "list", "placement": "bottom" }
+			},
+			"fieldConfig": {
+				"defaults": {
+					"color": { "mode": "palette-classic" },
+					"custom": {
+						"lineWidth": 2,
+						"fillOpacity": 15,
+						"gradientMode": "none",
+						"spanNulls": false
+					},
+					"unit": "short"
+				}
+			},
+			"targets": [
+				{
+					"datasource": { "type": "prometheus" },
+					"expr": "active_viewers",
+					"legendFormat": "Онлайн",
+					"refId": "A"
+				}
+			]
+		}
+	]
+}
