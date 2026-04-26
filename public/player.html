@@ -128,7 +128,9 @@
 		</div>
 		<script>
 			//TODO: разделить
-			const ws = new WebSocket("ws://localhost:7654/metrics/ws");
+			const ws = new WebSocket(
+				"wss://video.dcote.net/metrics-api/metrics/ws",
+			);
 			function initWebSocket(ws) {
 				ws.onopen = () => {
 					console.log("WS подключён");
@@ -141,8 +143,8 @@
 				};
 
 				ws.onmessage = (msg) => {
-					const data = JSON.parse(msg.data);
-					console.log("Сервер ответил:", data);
+					//const data = JSON.parse(msg.data);
+					//console.log("Сервер ответил:", data);
 				};
 
 				ws.onclose = () => {
