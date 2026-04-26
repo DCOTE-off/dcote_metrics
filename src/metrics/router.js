@@ -1,6 +1,4 @@
-import client from "prom-client";
-
-const register = new client.Registry();
+import { register, activeViewers, totalConnections } from "./metrics";
 
 export default async function metricsRoute(app) {
 	app.get("/", async (req, reply) => {
@@ -9,7 +7,8 @@ export default async function metricsRoute(app) {
 	});
 	app.get("/ws", { websocket: true }, (socket, req) => {
 		console.log("Подключился");
-
+		activeViewers.inc();
+		totalConnections.inc();
 		socket.on("message", (msg) => {
 			const data = JSON.parse(msg);
 			console.log("Получил:", data);
@@ -19,6 +18,7 @@ export default async function metricsRoute(app) {
 
 		socket.on("close", () => {
 			console.log("Отключился");
+			activeViewers.dec();
 		});
 
 		socket.on("error", (err) => {
