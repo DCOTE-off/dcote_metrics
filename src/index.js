@@ -1,7 +1,7 @@
 import Fastify from "fastify";
 import fastifyWebsocket from "@fastify/websocket";
 import { join } from "path";
-import { readFileSync } from "fs";
+import { readFile } from "fs";
 import metricsRoute from "./metrics/router.js";
 
 const fastify = Fastify({
@@ -13,10 +13,10 @@ fastify.get("/health", async (req, reply) => {
 });
 
 const videoPlayerPath = join(process.cwd(), "public", "player.html");
+const videoPlayerFile = await readFile(videoPlayerPath);
 
 fastify.get("/videoplayer", async (req, reply) => {
-	const html = readFileSync(videoPlayerPath);
-	reply.type("text/html").send(html);
+	reply.type("text/html").send(videoPlayerFile);
 });
 
 fastify.register(fastifyWebsocket);
