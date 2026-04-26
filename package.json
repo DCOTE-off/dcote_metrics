@@ -11,6 +11,7 @@
 		"dev": "nodemon --ext js,html src/index.js"
 	},
 	"dependencies": {
+		"@fastify/websocket": "^11.2.0",
 		"fastify": "^5.8.5",
 		"prom-client": "^15.1.3"
 	},
