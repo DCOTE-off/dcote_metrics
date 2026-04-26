@@ -2,6 +2,14 @@ import { register, activeViewers, totalConnections } from "./metrics.js";
 
 export default async function metricsRoute(app) {
 	app.get("/", async (req, reply) => {
+		//TODO
+		const auth = req.headers["authorization"];
+		const isAuth = auth
+			? auth.split(" ")[1] == "SUPERSECRETPASSWORD"
+			: false;
+		if (!isAuth) {
+			reply.code(403).send({ error: "Forbidden" });
+		}
 		reply.header("Content-Type", register.contentType);
 		return register.metrics();
 	});
