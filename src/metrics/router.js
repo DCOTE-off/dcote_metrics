@@ -1,4 +1,4 @@
-import { register, activeViewers, totalConnections } from "./metrics";
+import { register, activeViewers, totalConnections } from "./metrics.js";
 
 export default async function metricsRoute(app) {
 	app.get("/", async (req, reply) => {
