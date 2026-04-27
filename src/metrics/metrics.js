@@ -8,10 +8,10 @@ const activeViewers = new client.Gauge({
 	registers: [register],
 });
 
-const totalConnections = new client.Counter({
-	name: "video_player_connections_total",
-	help: "Всего подключений",
+const viewingDuration = new client.Histogram({
+	name: "viewing_duration_seconds",
+	help: "Длительность просмотра",
 	registers: [register],
 });
 
-export { register, activeViewers, totalConnections };
+export { register, activeViewers, viewingDuration };

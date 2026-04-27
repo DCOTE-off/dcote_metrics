@@ -1,4 +1,4 @@
-import { register, activeViewers, totalConnections } from "./metrics.js";
+import { register, activeViewers, viewingDuration } from "./metrics.js";
 
 export default async function metricsRoute(app) {
 	app.get("/", async (req, reply) => {
@@ -13,10 +13,23 @@ export default async function metricsRoute(app) {
 		reply.header("Content-Type", register.contentType);
 		return register.metrics();
 	});
+	app.post("/viewing-time", async (req, reply) => {
+		const { seconds } = req.body;
+		if (
+			!seconds ||
+			typeof seconds !== "number" ||
+			seconds < 0 ||
+			seconds > 60 * 60
+		) {
+			return { ok: false };
+		}
+
+		viewingDuration.observe(seconds);
+		return { ok: true };
+	});
 	app.get("/ws", { websocket: true }, (socket, req) => {
 		console.log("Подключился");
 		activeViewers.inc();
-		totalConnections.inc();
 		socket.on("message", (msg) => {
 			const data = JSON.parse(msg);
 			console.log("Получил:", data);

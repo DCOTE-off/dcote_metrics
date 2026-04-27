@@ -10,7 +10,7 @@
 			"id": 1,
 			"type": "stat",
 			"title": "Сейчас смотрят",
-			"gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+			"gridPos": { "x": 0, "y": 4, "w": 6, "h": 4 },
 			"options": {
 				"reduceOptions": { "calcs": ["lastNotNull"] },
 				"colorMode": "background",
@@ -20,6 +20,7 @@
 			},
 			"fieldConfig": {
 				"defaults": {
+					"noValue": "0",
 					"color": { "mode": "thresholds" },
 					"thresholds": {
 						"mode": "absolute",
@@ -44,7 +45,40 @@
 		{
 			"id": 2,
 			"type": "stat",
-			"title": "Всего подключений",
+			"title": "Среднее время (сек)",
+			"gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+			"options": {
+				"reduceOptions": { "calcs": ["lastNotNull"] },
+				"colorMode": "background",
+				"graphMode": "none",
+				"textMode": "auto",
+				"orientation": "auto"
+			},
+			"fieldConfig": {
+				"defaults": {
+					"noValue": "0",
+					"color": { "mode": "thresholds" },
+					"thresholds": {
+						"mode": "absolute",
+						"steps": [{ "color": "purple", "value": null }]
+					},
+					"unit": "s",
+					"decimals": 0
+				}
+			},
+			"targets": [
+				{
+					"datasource": { "type": "prometheus" },
+					"expr": "increase(viewing_duration_seconds_sum[$__range]) / increase(viewing_duration_seconds_count[$__range])",
+					"legendFormat": "Среднее сек",
+					"refId": "A"
+				}
+			]
+		},
+		{
+			"id": 3,
+			"type": "stat",
+			"title": "Среднее время (мин)",
 			"gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
 			"options": {
 				"reduceOptions": { "calcs": ["lastNotNull"] },
@@ -55,28 +89,96 @@
 			},
 			"fieldConfig": {
 				"defaults": {
+					"noValue": "0",
 					"color": { "mode": "thresholds" },
 					"thresholds": {
 						"mode": "absolute",
-						"steps": [{ "color": "blue", "value": null }]
+						"steps": [{ "color": "purple", "value": null }]
 					},
-					"unit": "short"
+					"unit": "short",
+					"decimals": 1
 				}
 			},
 			"targets": [
 				{
 					"datasource": { "type": "prometheus" },
-					"expr": "round(increase(video_player_connections_total[$__range]))",
-					"legendFormat": "Всего",
+					"expr": "(increase(viewing_duration_seconds_sum[$__range]) / increase(viewing_duration_seconds_count[$__range])) / 60",
+					"legendFormat": "Среднее мин",
 					"refId": "A"
 				}
 			]
 		},
 		{
-			"id": 3,
+			"id": 4,
+			"type": "stat",
+			"title": "Всего просмотров",
+			"gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+			"options": {
+				"reduceOptions": { "calcs": ["lastNotNull"] },
+				"colorMode": "background",
+				"graphMode": "none",
+				"textMode": "auto",
+				"orientation": "auto"
+			},
+			"fieldConfig": {
+				"defaults": {
+					"noValue": "0",
+					"color": { "mode": "thresholds" },
+					"thresholds": {
+						"mode": "absolute",
+						"steps": [{ "color": "blue", "value": null }]
+					},
+					"unit": "short",
+					"decimals": 0
+				}
+			},
+			"targets": [
+				{
+					"datasource": { "type": "prometheus" },
+					"expr": "round(increase(viewing_duration_seconds_count[$__range]))",
+					"legendFormat": "Просмотров",
+					"refId": "A"
+				}
+			]
+		},
+		{
+			"id": 5,
+			"type": "stat",
+			"title": "Общее время просмотра",
+			"gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+			"options": {
+				"reduceOptions": { "calcs": ["lastNotNull"] },
+				"colorMode": "background",
+				"graphMode": "none",
+				"textMode": "auto",
+				"orientation": "auto"
+			},
+			"fieldConfig": {
+				"defaults": {
+					"noValue": "0",
+					"color": { "mode": "thresholds" },
+					"thresholds": {
+						"mode": "absolute",
+						"steps": [{ "color": "blue", "value": null }]
+					},
+					"unit": "short",
+					"decimals": 0
+				}
+			},
+			"targets": [
+				{
+					"datasource": { "type": "prometheus" },
+					"expr": "round(increase(viewing_duration_seconds_sum[$__range]))",
+					"legendFormat": "Просмотров",
+					"refId": "A"
+				}
+			]
+		},
+		{
+			"id": 6,
 			"type": "timeseries",
 			"title": "Онлайн зрители",
-			"gridPos": { "x": 0, "y": 4, "w": 24, "h": 10 },
+			"gridPos": { "x": 0, "y": 8, "w": 24, "h": 10 },
 			"options": {
 				"tooltip": { "mode": "single" },
 				"legend": { "displayMode": "list", "placement": "bottom" }
