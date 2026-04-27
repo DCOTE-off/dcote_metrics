@@ -127,8 +127,44 @@
 			</div>
 		</div>
 		<script>
+			const stage = "dev";
+			const backendUrl =
+				stage == "dev"
+					? "http://localhost:7654"
+					: "https://video.dcote.net/metrics-api";
+			const websocketUrl =
+				stage == "dev"
+					? "ws://localhost:7654/metrics/ws"
+					: "wss://video.dcote.net/metrics-api/metrics/ws";
+			const viewingTime = { watchedSeconds: 0, startTime: null };
+			function initViewingTime() {
+				viewingTime.startTime = Date.now();
+			}
+			function saveViewingTime() {
+				if (viewingTime.startTime) {
+					let dif = Math.floor(
+						(Date.now() - viewingTime.startTime) / 1000,
+					);
+					viewingTime.watchedSeconds += dif;
+					viewingTime.startTime = null;
+				}
+			}
+			document.addEventListener("visibilitychange", function () {
+				if (document.visibilityState === "hidden") {
+					saveViewingTime();
+
+					const url = backendUrl + "/metrics/viewing-time";
+					const data = JSON.stringify({
+						seconds: viewingTime.watchedSeconds,
+					});
+					const blob = new Blob([data], { type: "application/json" });
+					navigator.sendBeacon(url, blob);
+					viewingTime.watchedSeconds = 0;
+				}
+			});
+
 			//TODO: разделить
-			const ws = new WebSocket("ws://localhost:7654/metrics/ws");
+			const ws = new WebSocket(websocketUrl);
 			function initWebSocket(ws) {
 				ws.onopen = () => {
 					console.log("WS подключён");
@@ -165,6 +201,13 @@
 				const player = new shaka.Player();
 				await player.attach(video);
 
+				video.addEventListener("play", () => {
+					initViewingTime();
+				});
+
+				video.addEventListener("pause", () => {
+					saveViewingTime();
+				});
 				player.addEventListener("error", (e) => onError(e.detail));
 
 				const ui = new shaka.ui.Overlay(player, container, video);

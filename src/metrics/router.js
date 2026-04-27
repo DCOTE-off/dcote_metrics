@@ -14,7 +14,7 @@ export default async function metricsRoute(app) {
 		return register.metrics();
 	});
 	app.post("/viewing-time", async (req, reply) => {
-		const { seconds } = req.body;
+		const seconds = req.body.seconds;
 		if (
 			!seconds ||
 			typeof seconds !== "number" ||
