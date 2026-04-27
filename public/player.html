@@ -134,12 +134,6 @@
 			function initWebSocket(ws) {
 				ws.onopen = () => {
 					console.log("WS подключён");
-					ws.send(
-						JSON.stringify({
-							event: "connected",
-							src: params.get("src"),
-						}),
-					);
 				};
 
 				ws.onmessage = (msg) => {
