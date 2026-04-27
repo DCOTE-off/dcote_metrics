@@ -9,7 +9,7 @@ const activeViewers = new client.Gauge({
 });
 
 const totalConnections = new client.Counter({
-	name: "total_connections",
+	name: "video_player_connections_total",
 	help: "Всего подключений",
 	registers: [register],
 });
