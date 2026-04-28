@@ -6,6 +6,7 @@ import metricsRoute from "./metrics/router.js";
 
 const fastify = Fastify({
 	logger: true,
+	trustProxy: true,
 });
 
 fastify.get("/health", async (req, reply) => {

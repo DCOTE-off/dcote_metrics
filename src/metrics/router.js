@@ -1,4 +1,5 @@
 import { register, activeViewers, viewingDuration } from "./metrics.js";
+import { getCountry } from "./maxmind.js";
 
 export default async function metricsRoute(app) {
 	app.get("/", async (req, reply) => {
@@ -15,6 +16,7 @@ export default async function metricsRoute(app) {
 	});
 	app.post("/viewing-time", async (req, reply) => {
 		const seconds = req.body.seconds;
+		console.log(req.body);
 		if (
 			!seconds ||
 			typeof seconds !== "number" ||
@@ -23,7 +25,9 @@ export default async function metricsRoute(app) {
 		) {
 			return { ok: false };
 		}
+		const ip = req.ip;
 
+		const country = getCountry(ip);
 		viewingDuration.observe(seconds);
 		return { ok: true };
 	});
