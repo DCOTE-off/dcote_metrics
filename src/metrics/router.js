@@ -15,8 +15,8 @@ export default async function metricsRoute(app) {
 		return register.metrics();
 	});
 	app.post("/viewing-time", async (req, reply) => {
-		const seconds = req.body.seconds;
-		console.log(req.body);
+		const body = req.body;
+		const seconds = body.seconds;
 		if (
 			!seconds ||
 			typeof seconds !== "number" ||
@@ -28,7 +28,16 @@ export default async function metricsRoute(app) {
 		const ip = req.ip;
 
 		const country = getCountry(ip);
-		viewingDuration.observe(seconds);
+
+		viewingDuration.observe(
+			{
+				country: country ? country : "Другие",
+				season: body.season ?? "Неизвестный",
+				episode: body.episode ?? "Неизвестный",
+				voice: body.voice ?? "Неизвестный",
+			},
+			seconds,
+		);
 		return { ok: true };
 	});
 	app.get("/ws", { websocket: true }, (socket, req) => {

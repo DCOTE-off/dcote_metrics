@@ -11,6 +11,7 @@ const activeViewers = new client.Gauge({
 const viewingDuration = new client.Histogram({
 	name: "viewing_duration_seconds",
 	help: "Длительность просмотра",
+	labelNames: ["country", "season", "episode", "voice"],
 	registers: [register],
 });
 

@@ -149,6 +149,24 @@
 					viewingTime.startTime = null;
 				}
 			}
+			const metricDatas = {
+				season: null,
+				episode: null,
+				voice: null,
+			};
+			function initMetricDatas(src) {
+				src =
+					"https://video.dcote.net/season-4/dub/episode-2/AniLibria/master.m3u8";
+				const match = src.match(
+					/season-(\d+)\/(dub|sub)\/episode-(\d+)/,
+				);
+				const season = match[1];
+				const type = match[2];
+				const episode = match[3];
+				metricDatas.season = season;
+				metricDatas.episode = episode;
+				metricDatas.voice = type;
+			}
 			document.addEventListener("visibilitychange", function () {
 				if (document.visibilityState === "hidden") {
 					saveViewingTime();
@@ -156,13 +174,13 @@
 					const url = backendUrl + "/metrics/viewing-time";
 					const data = JSON.stringify({
 						seconds: viewingTime.watchedSeconds,
+						...metricDatas,
 					});
 					const blob = new Blob([data], { type: "application/json" });
 					navigator.sendBeacon(url, blob);
 					viewingTime.watchedSeconds = 0;
 				}
 			});
-
 			//TODO: разделить
 			const ws = new WebSocket(websocketUrl);
 			function initWebSocket(ws) {
@@ -215,6 +233,7 @@
 
 				const params = new URLSearchParams(location.search);
 				const src = params.get("src");
+
 				const poster = params.get("poster");
 				const skipStart = parseFloat(params.get("skip_start") || "-1");
 				const skipEnd = parseFloat(params.get("skip_end") || "-1");
@@ -399,6 +418,7 @@
 				if (src) {
 					try {
 						await player.load(src);
+						initMetricDatas(src);
 					} catch (e) {
 						onError(e);
 					}
