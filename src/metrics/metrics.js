@@ -15,4 +15,5 @@ const viewingDuration = new client.Histogram({
 	registers: [register],
 });
 
+//count by (country) (rate(viewing_duration_seconds_count[1h]))
 export { register, activeViewers, viewingDuration };
