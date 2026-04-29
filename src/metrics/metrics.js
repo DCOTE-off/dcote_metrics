@@ -15,7 +15,33 @@ const viewingDuration = new client.Histogram({
 	registers: [register],
 });
 
+function initTestSeedDatas() {
+	const datas = [
+		{ country: "KZ", season: 1, episode: 3, voice: "DUB" },
+		{ country: "KZ", season: 2, episode: 3, voice: "DUB" },
+		{ country: "RU", season: 1, episode: 5, voice: "SUB" },
+		{ country: "BG", season: 2, episode: 6, voice: "DUB" },
+		{ country: "SK", season: 3, episode: 1, voice: "DUB" },
+		{ country: "KZ", season: 3, episode: 5, voice: "DUB" },
+		{ country: "KZ", season: 1, episode: 3, voice: "DUB" },
+		{ country: "KZ", season: 1, episode: 3, voice: "DUB" },
+		{ country: "KZ", season: 1, episode: 3, voice: "DUB" },
+		{ country: "KZ", season: 1, episode: 3, voice: "DUB" },
+	];
+	datas.forEach((el) => {
+		console.log(el);
+		viewingDuration.observe(
+			{
+				country: el.country ? el.country : "Другие",
+				season: el.season ?? "Неизвестный",
+				episode: el.episode ?? "Неизвестный",
+				voice: el.voice ?? "Неизвестный",
+			},
+			Math.floor(Math.random() * 60),
+		);
+	});
+}
+//initTestSeedDatas();
 activeViewers.set(0);
 
-//count by (country) (rate(viewing_duration_seconds_count[1h]))
 export { register, activeViewers, viewingDuration };
