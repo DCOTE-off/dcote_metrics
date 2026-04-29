@@ -5,7 +5,7 @@ import { readFile } from "fs/promises";
 import metricsRoute from "./metrics/router.js";
 
 const fastify = Fastify({
-	logger: true,
+	//logger: true,
 	trustProxy: true,
 });
 
