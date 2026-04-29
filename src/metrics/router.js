@@ -28,7 +28,7 @@ export default async function metricsRoute(app) {
 		const ip = req.ip;
 
 		const country = getCountry(ip);
-
+		console.log(ip, country);
 		viewingDuration.observe(
 			{
 				country: country ? country : "Другие",
