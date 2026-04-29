@@ -250,7 +250,7 @@
 						"type": "prometheus"
 					},
 					"editorMode": "code",
-					"expr": "sum(increase(viewing_duration_seconds_count{instance=\"backend:3000\"}[$__range]))",
+					"expr": "sum(last_over_time(viewing_duration_seconds_count{instance=\"backend:3000\"}[$__range]))",
 					"instant": true,
 					"legendFormat": "__auto",
 					"range": false,
@@ -383,7 +383,7 @@
 						"type": "prometheus"
 					},
 					"editorMode": "code",
-					"expr": "sum(increase(viewing_duration_seconds_sum{instance=\"backend:3000\"}[$__range]))",
+					"expr": "sum(last_over_time(viewing_duration_seconds_sum{instance=\"backend:3000\"}[$__range]))\r\n-\r\nsum(min_over_time(viewing_duration_seconds_sum{instance=\"backend:3000\"}[$__range]))",
 					"instant": true,
 					"legendFormat": "__auto",
 					"range": false,
@@ -417,8 +417,8 @@
 		]
 	},
 	"timezone": "browser",
-	"title": "Dcote video player",
+	"title": "Dcote vi",
 	"version": 1,
-	"uid": "dcrkh5k",
-	"id": 443880695185408
+	"uid": "dc69jz6",
+	"id": 449833321037824
 }
