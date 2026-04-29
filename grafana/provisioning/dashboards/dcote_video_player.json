@@ -1,621 +1,424 @@
 {
-	"apiVersion": "dashboard.grafana.app/v2",
-	"kind": "Dashboard",
-	"metadata": {
-		"name": "dcx2pk2",
-		"generation": 10,
-		"creationTimestamp": "2026-04-28T14:15:18Z",
-		"labels": {},
-		"annotations": {}
-	},
-	"spec": {
-		"annotations": [
+	"annotations": {
+		"list": [
 			{
-				"kind": "AnnotationQuery",
-				"spec": {
-					"query": {
-						"kind": "DataQuery",
-						"group": "grafana",
-						"version": "v0",
-						"spec": {},
-						"labels": {
-							"grafana.app/export-label": "grafana-1"
-						}
-					},
-					"enable": true,
-					"hide": true,
-					"iconColor": "rgba(0, 211, 255, 1)",
-					"name": "Annotations & Alerts",
-					"builtIn": true
-				}
+				"builtIn": 1,
+				"enable": true,
+				"hide": true,
+				"iconColor": "rgba(0, 211, 255, 1)",
+				"name": "Annotations & Alerts",
+				"type": "dashboard"
 			}
-		],
-		"cursorSync": "Off",
-		"editable": true,
-		"elements": {
-			"panel-1": {
-				"kind": "Panel",
-				"spec": {
-					"id": 1,
-					"title": "Онлайн зрители",
-					"description": "",
-					"links": [],
-					"data": {
-						"kind": "QueryGroup",
-						"spec": {
-							"queries": [
-								{
-									"kind": "PanelQuery",
-									"spec": {
-										"query": {
-											"kind": "DataQuery",
-											"group": "prometheus",
-											"version": "v0",
-											"spec": {
-												"editorMode": "builder",
-												"expr": "active_viewers{job=\"backend\"}",
-												"legendFormat": "__auto",
-												"range": true
-											},
-											"labels": {
-												"grafana.app/export-label": "prometheus-1"
-											}
-										},
-										"refId": "A",
-										"hidden": false
-									}
-								}
-							],
-							"transformations": [],
-							"queryOptions": {}
-						}
-					},
-					"vizConfig": {
-						"kind": "VizConfig",
-						"group": "gauge",
-						"version": "13.0.1",
-						"spec": {
-							"options": {
-								"barShape": "rounded",
-								"barWidthFactor": 0.2,
-								"effects": {
-									"barGlow": false,
-									"centerGlow": true,
-									"gradient": true
-								},
-								"endpointMarker": "glow",
-								"minVizHeight": 75,
-								"minVizWidth": 75,
-								"orientation": "auto",
-								"reduceOptions": {
-									"calcs": ["lastNotNull"],
-									"fields": "",
-									"values": false
-								},
-								"segmentCount": 1,
-								"segmentSpacing": 0,
-								"shape": "gauge",
-								"showThresholdLabels": false,
-								"showThresholdMarkers": true,
-								"sizing": "auto",
-								"sparkline": true,
-								"textMode": "value"
-							},
-							"fieldConfig": {
-								"defaults": {
-									"thresholds": {
-										"mode": "percentage",
-										"steps": [
-											{
-												"value": 0,
-												"color": "green"
-											},
-											{
-												"value": 80,
-												"color": "red"
-											}
-										]
-									},
-									"color": {
-										"mode": "shades",
-										"fixedColor": "red"
-									},
-									"noValue": "0",
-									"fieldMinMax": false
-								},
-								"overrides": []
-							}
-						}
-					},
-					"transparent": true
-				}
+		]
+	},
+	"editable": true,
+	"fiscalYearStartMonth": 0,
+	"graphTooltip": 0,
+	"liveNow": false,
+	"panels": [
+		{
+			"datasource": {
+				"type": "prometheus"
 			},
-			"panel-2": {
-				"kind": "Panel",
-				"spec": {
-					"id": 2,
-					"title": "Онлайн зрители график",
-					"description": "",
-					"links": [],
-					"data": {
-						"kind": "QueryGroup",
-						"spec": {
-							"queries": [
-								{
-									"kind": "PanelQuery",
-									"spec": {
-										"query": {
-											"kind": "DataQuery",
-											"group": "prometheus",
-											"version": "v0",
-											"spec": {
-												"editorMode": "builder",
-												"expr": "active_viewers{job=\"backend\"}",
-												"legendFormat": "__auto",
-												"range": true
-											},
-											"labels": {
-												"grafana.app/export-label": "prometheus-1"
-											}
-										},
-										"refId": "A",
-										"hidden": false
-									}
-								}
-							],
-							"transformations": [],
-							"queryOptions": {}
-						}
+			"fieldConfig": {
+				"defaults": {
+					"color": {
+						"fixedColor": "red",
+						"mode": "shades"
 					},
-					"vizConfig": {
-						"kind": "VizConfig",
-						"group": "timeseries",
-						"version": "13.0.1",
-						"spec": {
-							"options": {
-								"annotations": {
-									"clustering": -1,
-									"multiLane": false
-								},
-								"legend": {
-									"calcs": [],
-									"displayMode": "list",
-									"placement": "bottom",
-									"showLegend": false
-								},
-								"tooltip": {
-									"hideZeros": false,
-									"mode": "single",
-									"sort": "none"
-								}
+					"noValue": "0",
+					"thresholds": {
+						"mode": "percentage",
+						"steps": [
+							{
+								"color": "green",
+								"value": 0
 							},
-							"fieldConfig": {
-								"defaults": {
-									"thresholds": {
-										"mode": "percentage",
-										"steps": [
-											{
-												"value": 0,
-												"color": "green"
-											},
-											{
-												"value": 80,
-												"color": "red"
-											}
-										]
-									},
-									"color": {
-										"mode": "shades",
-										"fixedColor": "red"
-									},
-									"custom": {
-										"axisBorderShow": true,
-										"axisCenteredZero": false,
-										"axisColorMode": "series",
-										"axisGridShow": true,
-										"axisLabel": "",
-										"axisPlacement": "auto",
-										"barAlignment": 0,
-										"barWidthFactor": 0.6,
-										"drawStyle": "line",
-										"fillOpacity": 40,
-										"gradientMode": "hue",
-										"hideFrom": {
-											"legend": false,
-											"tooltip": false,
-											"viz": false
-										},
-										"insertNulls": false,
-										"lineInterpolation": "linear",
-										"lineStyle": {
-											"fill": "solid"
-										},
-										"lineWidth": 1,
-										"pointSize": 5,
-										"scaleDistribution": {
-											"type": "linear"
-										},
-										"showPoints": "auto",
-										"showValues": false,
-										"spanNulls": true,
-										"stacking": {
-											"group": "A",
-											"mode": "normal"
-										},
-										"thresholdsStyle": {
-											"mode": "off"
-										}
-									},
-									"fieldMinMax": false
-								},
-								"overrides": []
+							{
+								"color": "red",
+								"value": 80
 							}
-						}
-					},
-					"transparent": true
-				}
-			},
-			"panel-3": {
-				"kind": "Panel",
-				"spec": {
-					"id": 3,
-					"title": "Всего просмотров",
-					"description": "",
-					"links": [],
-					"data": {
-						"kind": "QueryGroup",
-						"spec": {
-							"queries": [
-								{
-									"kind": "PanelQuery",
-									"spec": {
-										"query": {
-											"kind": "DataQuery",
-											"group": "prometheus",
-											"version": "v0",
-											"spec": {
-												"editorMode": "code",
-												"expr": "sum(increase(viewing_duration_seconds_count{instance=\"backend:3000\"}[$__range]))",
-												"format": "time_series",
-												"legendFormat": "__auto",
-												"range": true
-											},
-											"labels": {
-												"grafana.app/export-label": "prometheus-1"
-											}
-										},
-										"refId": "A",
-										"hidden": false
-									}
-								}
-							],
-							"transformations": [],
-							"queryOptions": {}
-						}
-					},
-					"vizConfig": {
-						"kind": "VizConfig",
-						"group": "stat",
-						"version": "13.0.1",
-						"spec": {
-							"options": {
-								"colorMode": "background",
-								"graphMode": "none",
-								"justifyMode": "auto",
-								"orientation": "auto",
-								"percentChangeColorMode": "standard",
-								"reduceOptions": {
-									"calcs": [],
-									"fields": "",
-									"values": false
-								},
-								"showPercentChange": false,
-								"textMode": "auto",
-								"wideLayout": true
-							},
-							"fieldConfig": {
-								"defaults": {
-									"thresholds": {
-										"mode": "absolute",
-										"steps": [
-											{
-												"value": 0,
-												"color": "green"
-											},
-											{
-												"value": 80,
-												"color": "red"
-											}
-										]
-									},
-									"color": {
-										"mode": "shades",
-										"fixedColor": "#B877D9"
-									},
-									"fieldMinMax": false
-								},
-								"overrides": []
-							}
-						}
-					},
-					"transparent": true
-				}
-			},
-			"panel-4": {
-				"kind": "Panel",
-				"spec": {
-					"id": 4,
-					"title": "Сумма всех времени просмотра(мин)",
-					"description": "",
-					"links": [],
-					"data": {
-						"kind": "QueryGroup",
-						"spec": {
-							"queries": [
-								{
-									"kind": "PanelQuery",
-									"spec": {
-										"query": {
-											"kind": "DataQuery",
-											"group": "prometheus",
-											"version": "v0",
-											"spec": {
-												"editorMode": "code",
-												"expr": "sum(increase(viewing_duration_seconds_sum{instance=\"backend:3000\"}[$__range]))",
-												"legendFormat": "__auto",
-												"range": true
-											},
-											"labels": {
-												"grafana.app/export-label": "prometheus-1"
-											}
-										},
-										"refId": "A",
-										"hidden": false
-									}
-								}
-							],
-							"transformations": [],
-							"queryOptions": {}
-						}
-					},
-					"vizConfig": {
-						"kind": "VizConfig",
-						"group": "stat",
-						"version": "13.0.1",
-						"spec": {
-							"options": {
-								"colorMode": "background",
-								"graphMode": "none",
-								"justifyMode": "auto",
-								"orientation": "auto",
-								"percentChangeColorMode": "standard",
-								"reduceOptions": {
-									"calcs": [],
-									"fields": "",
-									"values": false
-								},
-								"showPercentChange": false,
-								"textMode": "auto",
-								"wideLayout": true
-							},
-							"fieldConfig": {
-								"defaults": {
-									"thresholds": {
-										"mode": "absolute",
-										"steps": [
-											{
-												"value": 0,
-												"color": "green"
-											},
-											{
-												"value": 80,
-												"color": "red"
-											}
-										]
-									},
-									"color": {
-										"mode": "shades",
-										"fixedColor": "light-blue"
-									}
-								},
-								"overrides": []
-							}
-						}
-					},
-					"transparent": true
-				}
-			},
-			"panel-5": {
-				"kind": "Panel",
-				"spec": {
-					"id": 5,
-					"title": "Авг время просмотра(мин)",
-					"description": "",
-					"links": [],
-					"data": {
-						"kind": "QueryGroup",
-						"spec": {
-							"queries": [
-								{
-									"kind": "PanelQuery",
-									"spec": {
-										"query": {
-											"kind": "DataQuery",
-											"group": "prometheus",
-											"version": "v0",
-											"spec": {
-												"editorMode": "code",
-												"expr": "sum(increase(viewing_duration_seconds_sum[$__range]))\r\n/\r\nclamp_min(sum(increase(viewing_duration_seconds_count[$__range])), 1)",
-												"legendFormat": "__auto",
-												"range": true
-											},
-											"labels": {
-												"grafana.app/export-label": "prometheus-1"
-											}
-										},
-										"refId": "A",
-										"hidden": false
-									}
-								}
-							],
-							"transformations": [],
-							"queryOptions": {}
-						}
-					},
-					"vizConfig": {
-						"kind": "VizConfig",
-						"group": "stat",
-						"version": "13.0.1",
-						"spec": {
-							"options": {
-								"colorMode": "background",
-								"graphMode": "none",
-								"justifyMode": "auto",
-								"orientation": "auto",
-								"percentChangeColorMode": "standard",
-								"reduceOptions": {
-									"calcs": [],
-									"fields": "",
-									"values": false
-								},
-								"showPercentChange": false,
-								"textMode": "auto",
-								"wideLayout": true
-							},
-							"fieldConfig": {
-								"defaults": {
-									"thresholds": {
-										"mode": "absolute",
-										"steps": [
-											{
-												"value": 0,
-												"color": "green"
-											},
-											{
-												"value": 80,
-												"color": "red"
-											}
-										]
-									},
-									"color": {
-										"mode": "shades",
-										"fixedColor": "light-blue"
-									},
-									"noValue": "0"
-								},
-								"overrides": []
-							}
-						}
-					},
-					"transparent": true
-				}
-			}
-		},
-		"layout": {
-			"kind": "GridLayout",
-			"spec": {
-				"items": [
-					{
-						"kind": "GridLayoutItem",
-						"spec": {
-							"x": 0,
-							"y": 0,
-							"width": 7,
-							"height": 10,
-							"element": {
-								"kind": "ElementReference",
-								"name": "panel-1"
-							}
-						}
-					},
-					{
-						"kind": "GridLayoutItem",
-						"spec": {
-							"x": 7,
-							"y": 0,
-							"width": 17,
-							"height": 10,
-							"element": {
-								"kind": "ElementReference",
-								"name": "panel-2"
-							}
-						}
-					},
-					{
-						"kind": "GridLayoutItem",
-						"spec": {
-							"x": 0,
-							"y": 10,
-							"width": 6,
-							"height": 6,
-							"element": {
-								"kind": "ElementReference",
-								"name": "panel-3"
-							}
-						}
-					},
-					{
-						"kind": "GridLayoutItem",
-						"spec": {
-							"x": 6,
-							"y": 10,
-							"width": 6,
-							"height": 6,
-							"element": {
-								"kind": "ElementReference",
-								"name": "panel-5"
-							}
-						}
-					},
-					{
-						"kind": "GridLayoutItem",
-						"spec": {
-							"x": 12,
-							"y": 10,
-							"width": 6,
-							"height": 6,
-							"element": {
-								"kind": "ElementReference",
-								"name": "panel-4"
-							}
-						}
+						]
 					}
-				]
-			}
-		},
-		"links": [],
-		"liveNow": false,
-		"preload": false,
-		"tags": [],
-		"timeSettings": {
-			"timezone": "browser",
-			"from": "now-1h",
-			"to": "now",
-			"autoRefresh": "",
-			"autoRefreshIntervals": [
-				"5s",
-				"10s",
-				"30s",
-				"1m",
-				"5m",
-				"15m",
-				"30m",
-				"1h",
-				"2h",
-				"1d"
-			],
-			"hideTimepicker": false,
-			"fiscalYearStartMonth": 0
-		},
-		"title": "Dcote video player",
-		"variables": [],
-		"preferences": {
-			"layout": {
-				"kind": "GridLayout",
-				"spec": {
-					"items": []
 				}
-			}
+			},
+			"gridPos": {
+				"h": 10,
+				"w": 7,
+				"x": 0,
+				"y": 0
+			},
+			"id": 1,
+			"options": {
+				"barShape": "rounded",
+				"barWidthFactor": 0.2,
+				"effects": {
+					"barGlow": false,
+					"centerGlow": true,
+					"gradient": true
+				},
+				"endpointMarker": "glow",
+				"minVizHeight": 75,
+				"minVizWidth": 75,
+				"orientation": "auto",
+				"reduceOptions": {
+					"calcs": ["lastNotNull"],
+					"fields": "",
+					"values": false
+				},
+				"segmentCount": 1,
+				"segmentSpacing": 0,
+				"shape": "gauge",
+				"showThresholdLabels": false,
+				"showThresholdMarkers": true,
+				"sizing": "auto",
+				"sparkline": true,
+				"textMode": "value"
+			},
+			"pluginVersion": "13.0.1",
+			"targets": [
+				{
+					"datasource": {
+						"type": "prometheus"
+					},
+					"editorMode": "builder",
+					"expr": "active_viewers{instance=\"backend:3000\"}",
+					"legendFormat": "__auto",
+					"range": true,
+					"refId": "A"
+				}
+			],
+			"title": "Онлайн зрители",
+			"transparent": true,
+			"type": "gauge"
+		},
+		{
+			"datasource": {
+				"type": "prometheus"
+			},
+			"fieldConfig": {
+				"defaults": {
+					"color": {
+						"fixedColor": "red",
+						"mode": "shades"
+					},
+					"custom": {
+						"axisBorderShow": true,
+						"axisCenteredZero": false,
+						"axisColorMode": "series",
+						"axisGridShow": true,
+						"axisLabel": "",
+						"axisPlacement": "auto",
+						"barAlignment": 0,
+						"barWidthFactor": 0.6,
+						"drawStyle": "line",
+						"fillOpacity": 40,
+						"gradientMode": "hue",
+						"hideFrom": {
+							"legend": false,
+							"tooltip": false,
+							"viz": false
+						},
+						"insertNulls": false,
+						"lineInterpolation": "linear",
+						"lineStyle": {
+							"fill": "solid"
+						},
+						"lineWidth": 1,
+						"pointSize": 5,
+						"scaleDistribution": {
+							"type": "linear"
+						},
+						"showPoints": "auto",
+						"showValues": false,
+						"spanNulls": true,
+						"stacking": {
+							"group": "A",
+							"mode": "normal"
+						},
+						"thresholdsStyle": {
+							"mode": "off"
+						}
+					},
+					"thresholds": {
+						"mode": "percentage",
+						"steps": [
+							{
+								"color": "green",
+								"value": 0
+							},
+							{
+								"color": "red",
+								"value": 80
+							}
+						]
+					}
+				}
+			},
+			"gridPos": {
+				"h": 10,
+				"w": 17,
+				"x": 7,
+				"y": 0
+			},
+			"id": 2,
+			"options": {
+				"annotations": {
+					"clustering": -1,
+					"multiLane": false
+				},
+				"legend": {
+					"calcs": [],
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": false
+				},
+				"tooltip": {
+					"hideZeros": false,
+					"mode": "single",
+					"sort": "none"
+				}
+			},
+			"pluginVersion": "13.0.1",
+			"targets": [
+				{
+					"datasource": {
+						"type": "prometheus"
+					},
+					"editorMode": "builder",
+					"expr": "active_viewers{instance=\"backend:3000\"}",
+					"legendFormat": "__auto",
+					"range": true,
+					"refId": "A"
+				}
+			],
+			"title": "Онлайн зрители график",
+			"transparent": true,
+			"type": "timeseries"
+		},
+		{
+			"datasource": {
+				"type": "prometheus"
+			},
+			"fieldConfig": {
+				"defaults": {
+					"color": {
+						"fixedColor": "#B877D9",
+						"mode": "shades"
+					},
+					"thresholds": {
+						"mode": "absolute",
+						"steps": [
+							{
+								"color": "green",
+								"value": 0
+							},
+							{
+								"color": "red",
+								"value": 80
+							}
+						]
+					}
+				}
+			},
+			"gridPos": {
+				"h": 6,
+				"w": 6,
+				"x": 0,
+				"y": 10
+			},
+			"id": 3,
+			"options": {
+				"colorMode": "background",
+				"graphMode": "none",
+				"justifyMode": "auto",
+				"orientation": "auto",
+				"percentChangeColorMode": "standard",
+				"reduceOptions": {
+					"calcs": ["lastNotNull"],
+					"fields": "",
+					"values": false
+				},
+				"showPercentChange": false,
+				"textMode": "auto",
+				"wideLayout": true
+			},
+			"pluginVersion": "13.0.1",
+			"targets": [
+				{
+					"datasource": {
+						"type": "prometheus"
+					},
+					"editorMode": "code",
+					"expr": "sum(increase(viewing_duration_seconds_count{instance=\"backend:3000\"}[$__range]))",
+					"instant": true,
+					"legendFormat": "__auto",
+					"range": false,
+					"refId": "A"
+				}
+			],
+			"title": "Всего просмотров",
+			"transparent": true,
+			"type": "stat"
+		},
+		{
+			"datasource": {
+				"type": "prometheus"
+			},
+			"fieldConfig": {
+				"defaults": {
+					"color": {
+						"fixedColor": "light-blue",
+						"mode": "shades"
+					},
+					"noValue": "0",
+					"thresholds": {
+						"mode": "absolute",
+						"steps": [
+							{
+								"color": "green",
+								"value": 0
+							},
+							{
+								"color": "red",
+								"value": 80
+							}
+						]
+					},
+					"unit": "s"
+				}
+			},
+			"gridPos": {
+				"h": 6,
+				"w": 6,
+				"x": 6,
+				"y": 10
+			},
+			"id": 5,
+			"options": {
+				"colorMode": "background",
+				"graphMode": "none",
+				"justifyMode": "auto",
+				"orientation": "auto",
+				"percentChangeColorMode": "standard",
+				"reduceOptions": {
+					"calcs": ["lastNotNull"],
+					"fields": "",
+					"values": false
+				},
+				"showPercentChange": false,
+				"textMode": "auto",
+				"wideLayout": true
+			},
+			"pluginVersion": "13.0.1",
+			"targets": [
+				{
+					"datasource": {
+						"type": "prometheus"
+					},
+					"editorMode": "code",
+					"expr": "sum(increase(viewing_duration_seconds_sum{instance=\"backend:3000\"}[$__range]))\r\n/\r\nclamp_min(sum(increase(viewing_duration_seconds_count{instance=\"backend:3000\"}[$__range])), 1)",
+					"instant": true,
+					"legendFormat": "__auto",
+					"range": false,
+					"refId": "A"
+				}
+			],
+			"title": "Авг время просмотра",
+			"transparent": true,
+			"type": "stat"
+		},
+		{
+			"datasource": {
+				"type": "prometheus"
+			},
+			"fieldConfig": {
+				"defaults": {
+					"color": {
+						"fixedColor": "light-blue",
+						"mode": "shades"
+					},
+					"thresholds": {
+						"mode": "absolute",
+						"steps": [
+							{
+								"color": "green",
+								"value": 0
+							},
+							{
+								"color": "red",
+								"value": 80
+							}
+						]
+					},
+					"unit": "s"
+				}
+			},
+			"gridPos": {
+				"h": 6,
+				"w": 6,
+				"x": 12,
+				"y": 10
+			},
+			"id": 4,
+			"options": {
+				"colorMode": "background",
+				"graphMode": "none",
+				"justifyMode": "auto",
+				"orientation": "auto",
+				"percentChangeColorMode": "standard",
+				"reduceOptions": {
+					"calcs": ["lastNotNull"],
+					"fields": "",
+					"values": false
+				},
+				"showPercentChange": false,
+				"textMode": "auto",
+				"wideLayout": true
+			},
+			"pluginVersion": "13.0.1",
+			"targets": [
+				{
+					"datasource": {
+						"type": "prometheus"
+					},
+					"editorMode": "code",
+					"expr": "sum(increase(viewing_duration_seconds_sum{instance=\"backend:3000\"}[$__range]))",
+					"instant": true,
+					"legendFormat": "__auto",
+					"range": false,
+					"refId": "A"
+				}
+			],
+			"title": "Сумма всех времени просмотра",
+			"transparent": true,
+			"type": "stat"
 		}
-	}
+	],
+	"preload": false,
+	"refresh": "",
+	"schemaVersion": 42,
+	"time": {
+		"from": "now-1h",
+		"to": "now"
+	},
+	"timepicker": {
+		"refresh_intervals": [
+			"5s",
+			"10s",
+			"30s",
+			"1m",
+			"5m",
+			"15m",
+			"30m",
+			"1h",
+			"2h",
+			"1d"
+		]
+	},
+	"timezone": "browser",
+	"title": "Dcote video player",
+	"version": 1,
+	"uid": "dcrkh5k",
+	"id": 443880695185408
 }
