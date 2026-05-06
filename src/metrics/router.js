@@ -20,7 +20,7 @@ export default async function metricsRoute(app) {
 		if (
 			!seconds ||
 			typeof seconds !== "number" ||
-			seconds < 0 ||
+			seconds < 30 ||
 			seconds > 60 * 60
 		) {
 			return { ok: false };
