@@ -15,9 +15,20 @@ fastify.get("/health", async (req, reply) => {
 
 const videoPlayerPath = join(process.cwd(), "public", "player.html");
 const videoPlayerFile = await readFile(videoPlayerPath);
+const subtitleFontPath = join(
+	process.cwd(),
+	"public",
+	"fonts",
+	"vag-rounded-next-bold.woff2",
+);
+const subtitleFontFile = await readFile(subtitleFontPath);
 
 fastify.get("/videoplayer", async (req, reply) => {
 	reply.type("text/html").send(videoPlayerFile);
+});
+
+fastify.get("/fonts/vag-rounded-next-bold.woff2", async (req, reply) => {
+	reply.type("font/woff2").send(subtitleFontFile);
 });
 
 fastify.register(fastifyWebsocket);
