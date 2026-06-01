@@ -14,7 +14,7 @@ copy .env.example .env
 #Windows PowerShell
 Copy-Item .env.example .env
 ```
-
+#### Быстрый старт для окружение
 ```env
 # Для стейджа в докере и для нодежс.
 STAGE=development #production
@@ -28,14 +28,14 @@ GF_SECURITY_ADMIN_PASSWORD=password
 GF_SERVER_ROOT_URL=https://video.dcote.net/grafana
 GF_SERVER_SERVE_FROM_SUB_PATH=true
 ```
-
+#### Порты
 | Сервис | Порт |
 |------------|----------|
 | backend | 7654 | 
 | prometheus | 9090 |
 | grafana | 7070 |
 | node_exporter | 9100 |
-
+#### Запуск
 ```bash
 
 docker compose build
