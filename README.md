@@ -2,17 +2,17 @@
 
 Метрика для аниме.
 
-### Старт
+### Быстрый Старт
 
 ```bash
 #Linux
-cp .env.example .env
+cp example.env .env
 
 #Windows CMD
-copy .env.example .env
+copy example.env .env
 
 #Windows PowerShell
-Copy-Item .env.example .env
+Copy-Item example.env .env
 ```
 #### Быстрый старт для окружение
 ```env
