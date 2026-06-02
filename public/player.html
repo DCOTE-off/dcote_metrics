@@ -52,6 +52,19 @@
 				object-fit: contain;
 			}
 
+			#poster-cover {
+				position: absolute;
+				inset: 0;
+				background: #000 center / contain no-repeat;
+				opacity: 0;
+				pointer-events: none;
+				transition: opacity 0.2s ease;
+			}
+
+			#poster-cover.visible {
+				opacity: 1;
+			}
+
 			.shaka-spinner-container .shaka-spinner svg g circle {
 				stroke: rgba(255, 255, 255, 0.2) !important;
 				stroke-opacity: 1 !important;
@@ -209,6 +222,7 @@
 	<body>
 		<div id="player-container">
 			<video id="video" playsinline></video>
+			<div id="poster-cover" aria-hidden="true"></div>
 			<div id="skip-btn">
 				<button id="skip-btn-dismiss">
 					<div id="skip-btn-dismiss-inner">
@@ -352,6 +366,7 @@
 
 				const video = document.getElementById("video");
 				const container = document.getElementById("player-container");
+				const posterCover = document.getElementById("poster-cover");
 				const skipBtn = document.getElementById("skip-btn");
 				const player = new shaka.Player();
 				metricPlayer = player;
@@ -376,7 +391,21 @@
 				const skipStart = parseFloat(params.get("skip_start") || "-1");
 				const skipEnd = parseFloat(params.get("skip_end") || "-1");
 
-				if (poster) video.poster = poster;
+				const showPoster = () => {
+					if (!poster) return;
+					video.poster = poster;
+					posterCover.style.backgroundImage = `url(${JSON.stringify(
+						poster,
+					)})`;
+					posterCover.classList.add("visible");
+				};
+				const hidePoster = () => {
+					posterCover.classList.remove("visible");
+				};
+
+				showPoster();
+				video.addEventListener("play", hidePoster);
+				video.addEventListener("playing", hidePoster);
 
 				const trackLabelFormat =
 					shaka.ui.Overlay.TrackLabelFormat.LABEL;
@@ -564,6 +593,7 @@
 				if (src) {
 					try {
 						await player.load(src);
+						showPoster();
 						initMetricDatas(src);
 						initAudioMetricTracking(player);
 					} catch (e) {
