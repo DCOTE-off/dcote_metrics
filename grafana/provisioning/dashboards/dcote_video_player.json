@@ -250,7 +250,7 @@
 						"type": "prometheus"
 					},
 					"editorMode": "code",
-					"expr": "sum(last_over_time(viewing_duration_seconds_count{instance=\"backend:3000\"}[$__range]))",
+					"expr": "round(sum(increase(viewing_duration_seconds_count{instance=\"backend:3000\"}[$__range])))",
 					"instant": true,
 					"legendFormat": "__auto",
 					"range": false,
@@ -383,7 +383,7 @@
 						"type": "prometheus"
 					},
 					"editorMode": "code",
-					"expr": "sum(last_over_time(viewing_duration_seconds_sum{instance=\"backend:3000\"}[$__range]))\r\n-\r\nsum(min_over_time(viewing_duration_seconds_sum{instance=\"backend:3000\"}[$__range]))",
+					"expr": "sum(increase(viewing_duration_seconds_sum{instance=\"backend:3000\"}[$__range]))",
 					"instant": true,
 					"legendFormat": "__auto",
 					"range": false,
@@ -456,7 +456,7 @@
 						"uid": "PBFA97CFB590B2093"
 					},
 					"editorMode": "code",
-					"expr": "sum by (country) (last_over_time(viewing_duration_seconds_count{instance=\"backend:3000\"}[$__range]))",
+					"expr": "(round(sum by (country) (increase(viewing_duration_seconds_count{instance=\"backend:3000\"}[$__range]))) > 0)",
 					"legendFormat": "__auto",
 					"range": true,
 					"refId": "A"
@@ -521,7 +521,7 @@
 						"uid": "PBFA97CFB590B2093"
 					},
 					"editorMode": "code",
-					"expr": "sum by (country) (last_over_time(viewing_duration_seconds_count{instance=\"backend:3000\"}[$__range]))",
+					"expr": "(round(sum by (country) (increase(viewing_duration_seconds_count{instance=\"backend:3000\"}[$__range]))) > 0)",
 					"legendFormat": "__auto",
 					"range": true,
 					"refId": "A"
@@ -594,7 +594,7 @@
 						"uid": "PBFA97CFB590B2093"
 					},
 					"editorMode": "code",
-					"expr": "sum by (season) (last_over_time(viewing_duration_seconds_count{instance=\"backend:3000\"}[$__range]))",
+					"expr": "(round(sum by (season) (increase(viewing_duration_seconds_count{instance=\"backend:3000\"}[$__range]))) > 0)",
 					"legendFormat": "__auto",
 					"range": true,
 					"refId": "A"
@@ -659,7 +659,7 @@
 						"uid": "PBFA97CFB590B2093"
 					},
 					"editorMode": "code",
-					"expr": "sum by (season) (last_over_time(viewing_duration_seconds_count{instance=\"backend:3000\"}[$__range]))",
+					"expr": "(round(sum by (season) (increase(viewing_duration_seconds_count{instance=\"backend:3000\"}[$__range]))) > 0)",
 					"legendFormat": "__auto",
 					"range": true,
 					"refId": "A"
@@ -724,7 +724,7 @@
 						"uid": "PBFA97CFB590B2093"
 					},
 					"editorMode": "code",
-					"expr": "sum by (voice) (last_over_time(viewing_duration_seconds_count{instance=\"backend:3000\"}[$__range]))",
+					"expr": "(round(sum by (voice) (increase(viewing_duration_seconds_count{instance=\"backend:3000\"}[$__range]))) > 0)",
 					"legendFormat": "__auto",
 					"range": true,
 					"refId": "A"
@@ -796,7 +796,7 @@
 					},
 					"editorMode": "code",
 					"exemplar": false,
-					"expr": "sum by (season, episode) (last_over_time(viewing_duration_seconds_count{instance=\"backend:3000\"}[$__range]))",
+					"expr": "topk(10, (round(sum by (season, episode) (increase(viewing_duration_seconds_count{instance=\"backend:3000\"}[$__range]))) > 0))",
 					"format": "table",
 					"instant": true,
 					"legendFormat": "__auto",

@@ -252,23 +252,61 @@
 				episode: null,
 				voice: null,
 			};
+			let metricPlayer = null;
+			function normalizeMetricLabel(value) {
+				if (typeof value !== "string") return null;
+				const label = value.trim().replace(/\s+/g, " ");
+				return label ? label.slice(0, 80) : null;
+			}
+			function getSelectedVoice(player) {
+				if (!player) return null;
+				const audioTracks =
+					typeof player.getAudioTracks === "function"
+						? player.getAudioTracks()
+						: [];
+				const audioTrack = audioTracks.find((track) => track.active);
+				const audioLabel = normalizeMetricLabel(audioTrack?.label);
+				if (audioLabel) return audioLabel;
+
+				const variantTracks =
+					typeof player.getVariantTracks === "function"
+						? player.getVariantTracks()
+						: [];
+				const variantTrack = variantTracks.find(
+					(track) => track.active,
+				);
+				return normalizeMetricLabel(variantTrack?.label);
+			}
+			function updateSelectedVoice(player) {
+				const voice = getSelectedVoice(player);
+				if (voice) metricDatas.voice = voice;
+			}
+			function initAudioMetricTracking(player) {
+				const update = () => updateSelectedVoice(player);
+				["trackschanged", "variantchanged", "audiotrackchanged"].forEach(
+					(eventName) => {
+						player.addEventListener(eventName, update);
+					},
+				);
+				update();
+			}
 			function initMetricDatas(src) {
 				//src =
-				//	"https://video.dcote.net/season-4/dub/episode-2/AniLibria/master.m3u8";
+				//	"https://video.dcote.net/season-04/episode-01/master.m3u8";
 				const match = src.match(
-					/season-(\d+)\/(?:(dub|sub)\/)?episode-(\d+)/,
+					/(?:^|\/)season-(\d+)\/episode-(\d+)(?:\/|$)/,
 				);
 				if (!match) return;
 				const season = match[1];
-				const type = match[2];
-				const episode = match[3];
+				const episode = match[2];
 				metricDatas.season = season;
 				metricDatas.episode = episode;
-				metricDatas.voice = type;
+				metricDatas.voice = null;
 			}
 			document.addEventListener("visibilitychange", function () {
 				if (document.visibilityState === "hidden") {
 					saveViewingTime();
+					updateSelectedVoice(metricPlayer);
 
 					const url = backendUrl + "/metrics/viewing-time";
 					const data = JSON.stringify({
@@ -316,6 +354,7 @@
 				const container = document.getElementById("player-container");
 				const skipBtn = document.getElementById("skip-btn");
 				const player = new shaka.Player();
+				metricPlayer = player;
 				await player.attach(video);
 
 				video.addEventListener("play", () => {
@@ -520,6 +559,7 @@
 					try {
 						await player.load(src);
 						initMetricDatas(src);
+						initAudioMetricTracking(player);
 					} catch (e) {
 						onError(e);
 					}
