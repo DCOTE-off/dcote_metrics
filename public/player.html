@@ -378,6 +378,9 @@
 
 				if (poster) video.poster = poster;
 
+				const trackLabelFormat =
+					shaka.ui.Overlay.TrackLabelFormat.LABEL;
+
 				ui.configure({
 					enableKeyboardPlaybackControls: false,
 					addSeekBar: true,
@@ -398,6 +401,9 @@
 						"captions",
 						"loop",
 					],
+					// LABEL maps to HLS #EXT-X-MEDIA NAME and keeps
+					// same-language audio tracks split in the menu.
+					trackLabelFormat,
 					seekBarColors: { played: "rgb(224, 11, 82)" },
 				});
 
