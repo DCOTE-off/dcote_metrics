@@ -696,8 +696,8 @@
 			},
 			"gridPos": {
 				"h": 8,
-				"w": 18,
-				"x": 3,
+				"w": 12,
+				"x": 0,
 				"y": 35
 			},
 			"id": 10,
@@ -731,6 +731,73 @@
 				}
 			],
 			"title": "Тип озвучки",
+			"transparent": true,
+			"type": "stat"
+		},
+		{
+			"datasource": {
+				"type": "prometheus",
+				"uid": "PBFA97CFB590B2093"
+			},
+			"fieldConfig": {
+				"defaults": {
+					"color": {
+						"mode": "continuous-BlPu"
+					},
+					"noValue": "0",
+					"thresholds": {
+						"mode": "absolute",
+						"steps": [
+							{
+								"color": "green",
+								"value": 0
+							},
+							{
+								"color": "red",
+								"value": 80
+							}
+						]
+					}
+				}
+			},
+			"gridPos": {
+				"h": 8,
+				"w": 12,
+				"x": 12,
+				"y": 35
+			},
+			"id": 12,
+			"options": {
+				"colorMode": "background",
+				"graphMode": "none",
+				"justifyMode": "center",
+				"orientation": "vertical",
+				"percentChangeColorMode": "standard",
+				"reduceOptions": {
+					"calcs": ["lastNotNull"],
+					"fields": "",
+					"values": false
+				},
+				"showPercentChange": false,
+				"textMode": "auto",
+				"wideLayout": true
+			},
+			"pluginVersion": "13.0.1",
+			"targets": [
+				{
+					"datasource": {
+						"type": "prometheus",
+						"uid": "PBFA97CFB590B2093"
+					},
+					"editorMode": "code",
+					"expr": "round(sum(increase(subtitles_enabled_total{instance=\"backend:3000\"}[$__range])))",
+					"instant": true,
+					"legendFormat": "__auto",
+					"range": false,
+					"refId": "A"
+				}
+			],
+			"title": "Субтитры",
 			"transparent": true,
 			"type": "stat"
 		},

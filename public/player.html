@@ -267,6 +267,14 @@
 				voice: null,
 			};
 			let metricPlayer = null;
+			let metricVideo = null;
+			const subtitleMetric = {
+				activeSeconds: 0,
+				activeStartedAt: null,
+				sent: false,
+				thresholdSeconds: 30,
+				timerId: null,
+			};
 			function normalizeMetricLabel(value) {
 				if (typeof value !== "string") return null;
 				const label = value.trim().replace(/\s+/g, " ");
@@ -304,6 +312,105 @@
 				);
 				update();
 			}
+			function areSubtitlesVisible(player, video) {
+				if (
+					player &&
+					typeof player.isTextTrackVisible === "function" &&
+					player.isTextTrackVisible()
+				) {
+					return true;
+				}
+
+				const textTracks = video?.textTracks
+					? Array.from(video.textTracks)
+					: [];
+				return textTracks.some((track) => track.mode === "showing");
+			}
+			function getSubtitleMetricSeconds() {
+				const activeSeconds = subtitleMetric.activeStartedAt
+					? (Date.now() - subtitleMetric.activeStartedAt) / 1000
+					: 0;
+				return subtitleMetric.activeSeconds + activeSeconds;
+			}
+			function clearSubtitleMetricTimer() {
+				if (subtitleMetric.timerId) {
+					clearTimeout(subtitleMetric.timerId);
+					subtitleMetric.timerId = null;
+				}
+			}
+			function sendSubtitleMetric() {
+				if (subtitleMetric.sent) return;
+				subtitleMetric.sent = true;
+				clearSubtitleMetricTimer();
+
+				const url = backendUrl + "/metrics/subtitles";
+				const data = JSON.stringify({
+					seconds: Math.floor(getSubtitleMetricSeconds()),
+					season: metricDatas.season,
+					episode: metricDatas.episode,
+				});
+				const blob = new Blob([data], { type: "application/json" });
+				navigator.sendBeacon(url, blob);
+			}
+			function scheduleSubtitleMetricCheck() {
+				clearSubtitleMetricTimer();
+				if (subtitleMetric.sent || !subtitleMetric.activeStartedAt) {
+					return;
+				}
+
+				const remainingMs = Math.max(
+					0,
+					(subtitleMetric.thresholdSeconds -
+						getSubtitleMetricSeconds()) *
+						1000,
+				);
+				subtitleMetric.timerId = setTimeout(() => {
+					updateSubtitleMetricState();
+				}, remainingMs + 100);
+			}
+			function updateSubtitleMetricState() {
+				if (subtitleMetric.sent) return;
+
+				const shouldTrack =
+					metricVideo &&
+					!metricVideo.paused &&
+					!metricVideo.ended &&
+					document.visibilityState === "visible" &&
+					areSubtitlesVisible(metricPlayer, metricVideo);
+
+				if (shouldTrack && !subtitleMetric.activeStartedAt) {
+					subtitleMetric.activeStartedAt = Date.now();
+				}
+
+				if (!shouldTrack && subtitleMetric.activeStartedAt) {
+					subtitleMetric.activeSeconds = getSubtitleMetricSeconds();
+					subtitleMetric.activeStartedAt = null;
+				}
+
+				if (
+					getSubtitleMetricSeconds() >=
+					subtitleMetric.thresholdSeconds
+				) {
+					sendSubtitleMetric();
+					return;
+				}
+
+				scheduleSubtitleMetricCheck();
+			}
+			function initSubtitleMetricTracking(player, video) {
+				const update = () => updateSubtitleMetricState();
+				["texttrackvisibility", "trackschanged"].forEach((eventName) => {
+					player.addEventListener(eventName, update);
+				});
+				["play", "playing", "pause", "ended"].forEach((eventName) => {
+					video.addEventListener(eventName, update);
+				});
+				if (video.textTracks?.addEventListener) {
+					video.textTracks.addEventListener("change", update);
+				}
+				document.addEventListener("visibilitychange", update);
+				update();
+			}
 			function initMetricDatas(src) {
 				//src =
 				//	"https://video.dcote.net/season-04/episode-01/master.m3u8";
@@ -320,6 +427,7 @@
 			document.addEventListener("visibilitychange", function () {
 				if (document.visibilityState === "hidden") {
 					saveViewingTime();
+					updateSubtitleMetricState();
 					updateSelectedVoice(metricPlayer);
 
 					const url = backendUrl + "/metrics/viewing-time";
@@ -370,6 +478,7 @@
 				const skipBtn = document.getElementById("skip-btn");
 				const player = new shaka.Player();
 				metricPlayer = player;
+				metricVideo = video;
 				await player.attach(video);
 
 				video.addEventListener("play", () => {
@@ -596,6 +705,7 @@
 						showPoster();
 						initMetricDatas(src);
 						initAudioMetricTracking(player);
+						initSubtitleMetricTracking(player, video);
 					} catch (e) {
 						onError(e);
 					}

@@ -15,6 +15,13 @@ const viewingDuration = new client.Histogram({
 	registers: [register],
 });
 
+const subtitlesEnabled = new client.Counter({
+	name: "subtitles_enabled_total",
+	help: "Subtitle usage after 30 seconds enabled during playback",
+	labelNames: ["country", "season", "episode"],
+	registers: [register],
+});
+
 function initTestSeedDatas() {
 	const datas = [
 		{ country: "KZ", season: 1, episode: 3, voice: "DUB" },
@@ -44,4 +51,4 @@ function initTestSeedDatas() {
 //initTestSeedDatas();
 activeViewers.set(0);
 
-export { register, activeViewers, viewingDuration };
+export { register, activeViewers, viewingDuration, subtitlesEnabled };

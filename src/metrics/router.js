@@ -1,4 +1,9 @@
-import { register, activeViewers, viewingDuration } from "./metrics.js";
+import {
+	register,
+	activeViewers,
+	viewingDuration,
+	subtitlesEnabled,
+} from "./metrics.js";
 import { getCountry } from "./maxmind.js";
 
 export default async function metricsRoute(app) {
@@ -38,6 +43,25 @@ export default async function metricsRoute(app) {
 			},
 			seconds,
 		);
+		return { ok: true };
+	});
+	app.post("/subtitles", async (req, reply) => {
+		const body = req.body ?? {};
+		const seconds = body.seconds;
+		if (
+			!seconds ||
+			typeof seconds !== "number" ||
+			seconds < 30 ||
+			seconds > 60 * 60
+		) {
+			return { ok: false };
+		}
+		const country = getCountry(req.ip);
+		subtitlesEnabled.inc({
+			country: country ? country : "Другие",
+			season: body.season ?? "Неизвестный",
+			episode: body.episode ?? "Неизвестный",
+		});
 		return { ok: true };
 	});
 	app.get("/ws", { websocket: true }, (socket, req) => {
