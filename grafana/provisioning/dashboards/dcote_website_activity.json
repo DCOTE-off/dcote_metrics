@@ -283,8 +283,9 @@
 					"editorMode": "code",
 					"expr": "sort_desc(sum by (page) (active_site_users{job=\"backend\"}) > 0)",
 					"legendFormat": "{{page}}",
-					"range": true,
-					"refId": "A"
+					"range": false,
+					"refId": "A",
+					"instant": true
 				}
 			],
 			"title": "Пользователи сайта по страницам",
@@ -357,8 +358,9 @@
 					"editorMode": "code",
 					"expr": "sort_desc(sum by (page) (active_site_tabs{job=\"backend\"}) > 0)",
 					"legendFormat": "{{page}}",
-					"range": true,
-					"refId": "A"
+					"range": false,
+					"refId": "A",
+					"instant": true
 				}
 			],
 			"title": "Вкладки сайта по страницам",
@@ -389,6 +391,6 @@
 	},
 	"timezone": "browser",
 	"title": "Dcote website activity",
-	"version": 1,
+	"version": 2,
 	"uid": "dcote-website-activity"
 }
