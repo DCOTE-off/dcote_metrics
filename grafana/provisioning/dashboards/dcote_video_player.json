@@ -323,7 +323,7 @@
 						"type": "prometheus"
 					},
 					"editorMode": "code",
-					"expr": "sum(increase(viewing_duration_seconds_sum{instance=\"backend:3000\"}[$__range]))\r\n/\r\nclamp_min(sum(increase(viewing_duration_seconds_count{instance=\"backend:3000\"}[$__range])), 1)",
+					"expr": "(\r\n  sum(increase(viewing_duration_seconds_sum{instance=\"backend:3000\"}[$__range]))\r\n  /\r\n  (sum(increase(viewing_duration_seconds_count{instance=\"backend:3000\"}[$__range])) > 0)\r\n)\r\nor vector(0)",
 					"instant": true,
 					"legendFormat": "__auto",
 					"range": false,
@@ -1287,6 +1287,214 @@
 			"title": "Вкладки сайта по страницам",
 			"transparent": true,
 			"type": "bargauge"
+		},
+		{
+			"datasource": {
+				"type": "prometheus",
+				"uid": "PBFA97CFB590B2093"
+			},
+			"fieldConfig": {
+				"defaults": {
+					"color": {
+						"mode": "thresholds"
+					},
+					"custom": {
+						"align": "center",
+						"cellOptions": {
+							"type": "color-text"
+						},
+						"filterable": false,
+						"footer": {
+							"reducers": []
+						},
+						"inspect": false,
+						"wrapHeaderText": false,
+						"wrapText": false
+					},
+					"thresholds": {
+						"mode": "absolute",
+						"steps": [
+							{
+								"color": "green",
+								"value": 0
+							},
+							{
+								"color": "red",
+								"value": 80
+							}
+						]
+					}
+				}
+			},
+			"gridPos": {
+				"h": 12,
+				"w": 24,
+				"x": 0,
+				"y": 71
+			},
+			"id": 18,
+			"options": {
+				"cellHeight": "sm",
+				"enablePagination": true,
+				"showHeader": true
+			},
+			"pluginVersion": "13.0.1",
+			"targets": [
+				{
+					"datasource": {
+						"type": "prometheus",
+						"uid": "PBFA97CFB590B2093"
+					},
+					"editorMode": "code",
+					"exemplar": false,
+					"expr": "sort_desc((round(sum by (season, episode, voice) (increase(viewing_duration_seconds_count{instance=\"backend:3000\"}[$__range]))) > 0))",
+					"format": "table",
+					"instant": true,
+					"legendFormat": "__auto",
+					"range": false,
+					"refId": "A"
+				}
+			],
+			"title": "Озвучки по сериям",
+			"transformations": [
+				{
+					"id": "labelsToFields",
+					"options": {
+						"mode": "columns"
+					}
+				},
+				{
+					"id": "organize",
+					"options": {
+						"excludeByName": {
+							"Time": true,
+							"Value": false
+						},
+						"includeByName": {},
+						"indexByName": {
+							"Time": 0,
+							"season": 1,
+							"episode": 2,
+							"voice": 3,
+							"Value": 4
+						},
+						"orderBy": [],
+						"orderByMode": "manual",
+						"renameByName": {
+							"Time": "",
+							"season": "Сезон",
+							"episode": "Серия",
+							"voice": "Озвучка",
+							"Value": "Просмотры"
+						}
+					}
+				}
+			],
+			"transparent": true,
+			"type": "table"
+		},
+		{
+			"datasource": {
+				"type": "prometheus",
+				"uid": "PBFA97CFB590B2093"
+			},
+			"fieldConfig": {
+				"defaults": {
+					"color": {
+						"mode": "thresholds"
+					},
+					"custom": {
+						"align": "center",
+						"cellOptions": {
+							"type": "color-text"
+						},
+						"filterable": false,
+						"footer": {
+							"reducers": []
+						},
+						"inspect": false,
+						"wrapHeaderText": false,
+						"wrapText": false
+					},
+					"thresholds": {
+						"mode": "absolute",
+						"steps": [
+							{
+								"color": "green",
+								"value": 0
+							},
+							{
+								"color": "red",
+								"value": 80
+							}
+						]
+					}
+				}
+			},
+			"gridPos": {
+				"h": 12,
+				"w": 24,
+				"x": 0,
+				"y": 83
+			},
+			"id": 19,
+			"options": {
+				"cellHeight": "sm",
+				"enablePagination": true,
+				"showHeader": true
+			},
+			"pluginVersion": "13.0.1",
+			"targets": [
+				{
+					"datasource": {
+						"type": "prometheus",
+						"uid": "PBFA97CFB590B2093"
+					},
+					"editorMode": "code",
+					"exemplar": false,
+					"expr": "sort_desc((round(sum by (season, episode) (increase(subtitles_enabled_total{instance=\"backend:3000\"}[$__range]))) > 0))",
+					"format": "table",
+					"instant": true,
+					"legendFormat": "__auto",
+					"range": false,
+					"refId": "A"
+				}
+			],
+			"title": "Субтитры по сериям",
+			"transformations": [
+				{
+					"id": "labelsToFields",
+					"options": {
+						"mode": "columns"
+					}
+				},
+				{
+					"id": "organize",
+					"options": {
+						"excludeByName": {
+							"Time": true,
+							"Value": false
+						},
+						"includeByName": {},
+						"indexByName": {
+							"Time": 0,
+							"season": 1,
+							"episode": 2,
+							"Value": 3
+						},
+						"orderBy": [],
+						"orderByMode": "manual",
+						"renameByName": {
+							"Time": "",
+							"season": "Сезон",
+							"episode": "Серия",
+							"Value": "Использований"
+						}
+					}
+				}
+			],
+			"transparent": true,
+			"type": "table"
 		}
 	],
 	"preload": false,
@@ -1312,7 +1520,7 @@
 	},
 	"timezone": "browser",
 	"title": "Dcote video player",
-	"version": 2,
+	"version": 3,
 	"uid": "dadad2",
 	"id": 463777304076288
 }
