@@ -1,24 +1,34 @@
 ## Dcote metrics
 
-### Что такое Fastify backend?
+### Как устроены Grafana и metrics API?
 
-Fastify backend — это Node.js metrics API сервис из этого репозитория.
-Это не Grafana. В `docker-compose.yml` этот сервис называется `backend`,
-а его точка входа — `src/index.js`.
-
-Он принимает события от сайта/плеера, отдаёт метрики для Prometheus и раздаёт
-скрипт трекера активности сайта:
+В этой системе есть две разные части:
 
 ```text
-контейнер backend: backend:3000
-порт для dev:      http://localhost:7654
-публичный prefix:  https://video.dcote.net/metrics-api
+https://metrics.dcote.net/dashboards
 ```
 
-Grafana только читает данные из Prometheus и показывает dashboards. Сейчас
-Grafana открывается на `https://metrics.dcote.net/dashboards`, а публичный
-metrics API backend доступен отдельно через
-`https://video.dcote.net/metrics-api`.
+Это Grafana. Она только показывает dashboards и сама не принимает события от
+сайта или плеера.
+
+```text
+https://video.dcote.net/metrics-api
+```
+
+Это публичный адрес metrics API из этого репозитория. В `docker-compose.yml`
+этот сервис называется `backend`, а запускается он через `src/index.js`.
+
+Именно этот `backend` принимает события от сайта/плеера, отдаёт метрики для
+Prometheus и раздаёт скрипт трекера активности сайта:
+
+```text
+контейнер backend:        backend:3000
+порт backend на сервере:  http://localhost:7654
+публичный адрес backend:  https://video.dcote.net/metrics-api
+```
+
+Поэтому на основном сайте скрипты и WebSocket для статистики должны обращаться
+к `video.dcote.net/metrics-api`, а не к `metrics.dcote.net/dashboards`.
 
 Метрика для аниме.
 
@@ -86,14 +96,24 @@ const websocketUrl =
 
 ### Метрики активности сайта
 
-Backend принимает события активности сайта и с публичным prefix
-`/metrics-api`, и без него:
+Для метрик активности сайта основной сайт должен подключить трекер с публичного
+адреса metrics API:
+
+```text
+https://video.dcote.net/metrics-api/site-presence-tracker.js
+```
+
+После подключения скрипт сам открывает WebSocket:
+
+```text
+wss://video.dcote.net/metrics-api/metrics/site/ws
+```
+
+Внутри контейнера эти публичные URL после nginx rewrite попадают в такие route:
 
 ```text
 GET /site-presence-tracker.js
-GET /metrics-api/site-presence-tracker.js
 WS  /metrics/site/ws
-WS  /metrics-api/metrics/site/ws
 ```
 
 Для общего layout основного сайта:
