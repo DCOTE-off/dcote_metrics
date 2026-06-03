@@ -249,8 +249,19 @@
 					? "ws://localhost:7654/metrics/ws"
 					: "wss://video.dcote.net/metrics-api/metrics/ws";
 			const viewingTime = { watchedSeconds: 0, startTime: null };
+			const viewStartedMetric = {
+				sent: false,
+				thresholdSeconds: 30,
+				timerId: null,
+			};
+			const viewLabelsMetric = {
+				sentKey: null,
+			};
 			function initViewingTime() {
-				viewingTime.startTime = Date.now();
+				if (!viewingTime.startTime) {
+					viewingTime.startTime = Date.now();
+				}
+				scheduleViewStartedMetricCheck();
 			}
 			function saveViewingTime() {
 				if (viewingTime.startTime) {
@@ -260,6 +271,13 @@
 					viewingTime.watchedSeconds += dif;
 					viewingTime.startTime = null;
 				}
+				updateViewStartedMetricState();
+			}
+			function getViewingTimeSeconds() {
+				const activeSeconds = viewingTime.startTime
+					? Math.floor((Date.now() - viewingTime.startTime) / 1000)
+					: 0;
+				return viewingTime.watchedSeconds + activeSeconds;
 			}
 			const metricDatas = {
 				season: null,
@@ -301,7 +319,10 @@
 			}
 			function updateSelectedVoice(player) {
 				const voice = getSelectedVoice(player);
-				if (voice) metricDatas.voice = voice;
+				if (voice) {
+					metricDatas.voice = voice;
+					sendViewLabelsMetric();
+				}
 			}
 			function initAudioMetricTracking(player) {
 				const update = () => updateSelectedVoice(player);
@@ -311,6 +332,62 @@
 					},
 				);
 				update();
+			}
+			function sendViewLabelsMetric() {
+				const key = JSON.stringify(metricDatas);
+				if (viewLabelsMetric.sentKey === key) return;
+
+				viewLabelsMetric.sentKey = key;
+				const url = backendUrl + "/metrics/view-labels";
+				const data = JSON.stringify(metricDatas);
+				const blob = new Blob([data], { type: "application/json" });
+				navigator.sendBeacon(url, blob);
+			}
+			function clearViewStartedMetricTimer() {
+				if (viewStartedMetric.timerId) {
+					clearTimeout(viewStartedMetric.timerId);
+					viewStartedMetric.timerId = null;
+				}
+			}
+			function sendViewStartedMetric() {
+				if (viewStartedMetric.sent) return;
+
+				const seconds = getViewingTimeSeconds();
+				if (seconds < viewStartedMetric.thresholdSeconds) return;
+
+				viewStartedMetric.sent = true;
+				clearViewStartedMetricTimer();
+				updateSelectedVoice(metricPlayer);
+
+				const url = backendUrl + "/metrics/view-started";
+				const data = JSON.stringify({
+					seconds,
+					...metricDatas,
+				});
+				const blob = new Blob([data], { type: "application/json" });
+				navigator.sendBeacon(url, blob);
+			}
+			function scheduleViewStartedMetricCheck() {
+				clearViewStartedMetricTimer();
+				if (viewStartedMetric.sent || !viewingTime.startTime) return;
+
+				const remainingMs = Math.max(
+					0,
+					(viewStartedMetric.thresholdSeconds -
+						getViewingTimeSeconds()) *
+						1000,
+				);
+				viewStartedMetric.timerId = setTimeout(() => {
+					updateViewStartedMetricState();
+				}, remainingMs + 100);
+			}
+			function updateViewStartedMetricState() {
+				if (viewStartedMetric.sent) return;
+				if (getViewingTimeSeconds() >= viewStartedMetric.thresholdSeconds) {
+					sendViewStartedMetric();
+					return;
+				}
+				scheduleViewStartedMetricCheck();
 			}
 			function areSubtitlesVisible(player, video) {
 				if (
@@ -423,23 +500,46 @@
 				metricDatas.season = season;
 				metricDatas.episode = episode;
 				metricDatas.voice = null;
+				viewStartedMetric.sent = false;
+				clearViewStartedMetricTimer();
+				viewLabelsMetric.sentKey = null;
+				viewingTime.watchedSeconds = 0;
+				viewingTime.startTime = null;
+				sendViewLabelsMetric();
+			}
+			function flushViewingTimeMetric() {
+				saveViewingTime();
+				updateSubtitleMetricState();
+				updateSelectedVoice(metricPlayer);
+				sendViewStartedMetric();
+
+				if (viewingTime.watchedSeconds < 30) return;
+
+				const url = backendUrl + "/metrics/viewing-time";
+				const data = JSON.stringify({
+					seconds: viewingTime.watchedSeconds,
+					...metricDatas,
+				});
+				const blob = new Blob([data], { type: "application/json" });
+				navigator.sendBeacon(url, blob);
+				viewingTime.watchedSeconds = 0;
 			}
 			document.addEventListener("visibilitychange", function () {
 				if (document.visibilityState === "hidden") {
-					saveViewingTime();
-					updateSubtitleMetricState();
-					updateSelectedVoice(metricPlayer);
-
-					const url = backendUrl + "/metrics/viewing-time";
-					const data = JSON.stringify({
-						seconds: viewingTime.watchedSeconds,
-						...metricDatas,
-					});
-					const blob = new Blob([data], { type: "application/json" });
-					navigator.sendBeacon(url, blob);
-					viewingTime.watchedSeconds = 0;
+					flushViewingTimeMetric();
+					return;
 				}
+
+				if (
+					metricVideo &&
+					!metricVideo.paused &&
+					!metricVideo.ended
+				) {
+					initViewingTime();
+				}
+				updateSubtitleMetricState();
 			});
+			window.addEventListener("pagehide", flushViewingTimeMetric);
 			//TODO: разделить
 			const ws = new WebSocket(websocketUrl);
 			function initWebSocket(ws) {

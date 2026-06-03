@@ -2,6 +2,7 @@ import {
 	register,
 	activeViewers,
 	viewingDuration,
+	videoViews,
 	subtitlesEnabled,
 } from "./metrics.js";
 import { getCountry } from "./maxmind.js";
@@ -33,6 +34,16 @@ function parseWebsocketJsonMessage(msg) {
 	}
 }
 
+function getVideoMetricLabels(req, body) {
+	const country = getCountry(req.ip);
+	return {
+		country: country ? country : "Другие",
+		season: body.season ?? "Неизвестный",
+		episode: body.episode ?? "Неизвестный",
+		voice: body.voice ?? "Неизвестный",
+	};
+}
+
 export default async function metricsRoute(app) {
 	app.get("/", async (req, reply) => {
 		//TODO
@@ -45,6 +56,26 @@ export default async function metricsRoute(app) {
 		}
 		reply.header("Content-Type", register.contentType);
 		return register.metrics();
+	});
+	app.post("/view-labels", async (req, reply) => {
+		const body = req.body ?? {};
+		videoViews.inc(getVideoMetricLabels(req, body), 0);
+		return { ok: true };
+	});
+	app.post("/view-started", async (req, reply) => {
+		const body = req.body ?? {};
+		const seconds = body.seconds;
+		if (
+			!seconds ||
+			typeof seconds !== "number" ||
+			seconds < 30 ||
+			seconds > 60 * 60
+		) {
+			return { ok: false };
+		}
+
+		videoViews.inc(getVideoMetricLabels(req, body));
+		return { ok: true };
 	});
 	app.post("/viewing-time", async (req, reply) => {
 		const body = req.body;

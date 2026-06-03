@@ -15,6 +15,13 @@ const viewingDuration = new client.Histogram({
 	registers: [register],
 });
 
+const videoViews = new client.Counter({
+	name: "video_views_total",
+	help: "Video views after 30 seconds of playback",
+	labelNames: ["country", "season", "episode", "voice"],
+	registers: [register],
+});
+
 const subtitlesEnabled = new client.Counter({
 	name: "subtitles_enabled_total",
 	help: "Subtitle usage after 30 seconds enabled during playback",
@@ -97,6 +104,7 @@ export {
 	register,
 	activeViewers,
 	viewingDuration,
+	videoViews,
 	subtitlesEnabled,
 	activeSiteTabs,
 	activeSiteSessions,

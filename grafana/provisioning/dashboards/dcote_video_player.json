@@ -254,7 +254,7 @@
 						"type": "prometheus"
 					},
 					"editorMode": "code",
-					"expr": "round(sum(increase(viewing_duration_seconds_count{job=\"backend\"}[$__range]))) or vector(0)",
+					"expr": "round(sum(increase(video_views_total{job=\"backend\"}[$__range]))) or vector(0)",
 					"instant": true,
 					"legendFormat": "__auto",
 					"range": false,
@@ -466,7 +466,7 @@
 						"uid": "PBFA97CFB590B2093"
 					},
 					"editorMode": "code",
-					"expr": "(round(sum by (country) (increase(viewing_duration_seconds_count{job=\"backend\"}[$__range]))) > 0)",
+					"expr": "(round(sum by (country) (increase(video_views_total{job=\"backend\"}[$__range]))) > 0)",
 					"legendFormat": "__auto",
 					"range": true,
 					"refId": "A"
@@ -539,7 +539,7 @@
 						"uid": "PBFA97CFB590B2093"
 					},
 					"editorMode": "code",
-					"expr": "(round(sum by (country) (increase(viewing_duration_seconds_count{job=\"backend\"}[$__range]))) > 0)",
+					"expr": "(round(sum by (country) (increase(video_views_total{job=\"backend\"}[$__range]))) > 0)",
 					"legendFormat": "__auto",
 					"range": true,
 					"refId": "A"
@@ -614,7 +614,7 @@
 						"uid": "PBFA97CFB590B2093"
 					},
 					"editorMode": "code",
-					"expr": "(round(sum by (season) (increase(viewing_duration_seconds_count{job=\"backend\"}[$__range]))) > 0)",
+					"expr": "(round(sum by (season) (increase(video_views_total{job=\"backend\"}[$__range]))) > 0)",
 					"legendFormat": "__auto",
 					"range": true,
 					"refId": "A"
@@ -687,7 +687,7 @@
 						"uid": "PBFA97CFB590B2093"
 					},
 					"editorMode": "code",
-					"expr": "(round(sum by (season) (increase(viewing_duration_seconds_count{job=\"backend\"}[$__range]))) > 0)",
+					"expr": "(round(sum by (season) (increase(video_views_total{job=\"backend\"}[$__range]))) > 0)",
 					"legendFormat": "__auto",
 					"range": true,
 					"refId": "A"
@@ -754,7 +754,7 @@
 						"uid": "PBFA97CFB590B2093"
 					},
 					"editorMode": "code",
-					"expr": "(round(sum by (voice) (increase(viewing_duration_seconds_count{job=\"backend\"}[$__range]))) > 0)",
+					"expr": "(round(sum by (voice) (increase(video_views_total{job=\"backend\"}[$__range]))) > 0)",
 					"legendFormat": "__auto",
 					"range": true,
 					"refId": "A"
@@ -895,7 +895,7 @@
 					},
 					"editorMode": "code",
 					"exemplar": false,
-					"expr": "topk(10, (round(sum by (season, episode) (increase(viewing_duration_seconds_count{job=\"backend\"}[$__range]))) > 0))",
+					"expr": "topk(10, (round(sum by (season, episode) (increase(video_views_total{job=\"backend\"}[$__range]))) > 0))",
 					"format": "table",
 					"instant": true,
 					"legendFormat": "__auto",
@@ -998,7 +998,7 @@
 					},
 					"editorMode": "code",
 					"exemplar": false,
-					"expr": "sort_desc((round(sum by (season, episode, voice) (increase(viewing_duration_seconds_count{job=\"backend\"}[$__range]))) > 0))",
+					"expr": "sort_desc((round(sum by (season, episode, voice) (increase(video_views_total{job=\"backend\"}[$__range]))) > 0))",
 					"format": "table",
 					"instant": true,
 					"legendFormat": "__auto",
@@ -1171,7 +1171,7 @@
 	},
 	"timezone": "browser",
 	"title": "Dcote video player",
-	"version": 5,
+	"version": 6,
 	"uid": "dadad2",
 	"id": 463777304076288
 }
