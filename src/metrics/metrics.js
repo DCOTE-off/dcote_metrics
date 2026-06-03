@@ -22,6 +22,45 @@ const subtitlesEnabled = new client.Counter({
 	registers: [register],
 });
 
+const activeSiteTabs = new client.Gauge({
+	name: "active_site_tabs",
+	help: "Currently open site tabs by page",
+	labelNames: ["page"],
+	registers: [register],
+});
+
+const activeSiteSessions = new client.Gauge({
+	name: "active_site_sessions",
+	help: "Currently active browser sessions by page",
+	labelNames: ["page"],
+	registers: [register],
+});
+
+const activeSiteUsers = new client.Gauge({
+	name: "active_site_users",
+	help: "Currently active authenticated users by page",
+	labelNames: ["page"],
+	registers: [register],
+});
+
+const activeSiteTabsGlobal = new client.Gauge({
+	name: "active_site_tabs_global",
+	help: "Currently open site tabs across all pages",
+	registers: [register],
+});
+
+const activeSiteSessionsGlobal = new client.Gauge({
+	name: "active_site_sessions_global",
+	help: "Currently active browser sessions across all pages",
+	registers: [register],
+});
+
+const activeSiteUsersGlobal = new client.Gauge({
+	name: "active_site_users_global",
+	help: "Currently active authenticated users across all pages",
+	registers: [register],
+});
+
 function initTestSeedDatas() {
 	const datas = [
 		{ country: "KZ", season: 1, episode: 3, voice: "DUB" },
@@ -50,5 +89,19 @@ function initTestSeedDatas() {
 }
 //initTestSeedDatas();
 activeViewers.set(0);
+activeSiteTabsGlobal.set(0);
+activeSiteSessionsGlobal.set(0);
+activeSiteUsersGlobal.set(0);
 
-export { register, activeViewers, viewingDuration, subtitlesEnabled };
+export {
+	register,
+	activeViewers,
+	viewingDuration,
+	subtitlesEnabled,
+	activeSiteTabs,
+	activeSiteSessions,
+	activeSiteUsers,
+	activeSiteTabsGlobal,
+	activeSiteSessionsGlobal,
+	activeSiteUsersGlobal,
+};

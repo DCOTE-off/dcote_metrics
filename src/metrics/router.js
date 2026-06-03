@@ -5,6 +5,33 @@ import {
 	subtitlesEnabled,
 } from "./metrics.js";
 import { getCountry } from "./maxmind.js";
+import {
+	registerSitePresenceConnection,
+	touchSitePresenceConnection,
+	unregisterSitePresenceConnection,
+} from "./sitePresence.js";
+
+function parseWebsocketJsonMessage(msg) {
+	const text = msg.toString();
+	if (text.length > 4096) {
+		return {
+			ok: false,
+			error: "Message is too large",
+		};
+	}
+
+	try {
+		return {
+			ok: true,
+			data: JSON.parse(text),
+		};
+	} catch {
+		return {
+			ok: false,
+			error: "Invalid JSON",
+		};
+	}
+}
 
 export default async function metricsRoute(app) {
 	app.get("/", async (req, reply) => {
@@ -81,6 +108,32 @@ export default async function metricsRoute(app) {
 
 		socket.on("error", (err) => {
 			console.error("Ошибка:", err);
+		});
+	});
+	app.get("/site/ws", { websocket: true }, (socket, req) => {
+		const connectionId = registerSitePresenceConnection();
+
+		socket.on("message", (msg) => {
+			const parsed = parseWebsocketJsonMessage(msg);
+			if (!parsed.ok) {
+				socket.send(JSON.stringify(parsed));
+				return;
+			}
+
+			const result = touchSitePresenceConnection(
+				connectionId,
+				parsed.data,
+			);
+			socket.send(JSON.stringify(result));
+		});
+
+		socket.on("close", () => {
+			unregisterSitePresenceConnection(connectionId);
+		});
+
+		socket.on("error", (err) => {
+			console.error("Site presence websocket error:", err);
+			unregisterSitePresenceConnection(connectionId);
 		});
 	});
 }

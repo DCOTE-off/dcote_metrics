@@ -62,7 +62,9 @@
 				"minVizWidth": 75,
 				"orientation": "auto",
 				"reduceOptions": {
-					"calcs": ["lastNotNull"],
+					"calcs": [
+						"lastNotNull"
+					],
 					"fields": "",
 					"values": false
 				},
@@ -235,7 +237,9 @@
 				"orientation": "auto",
 				"percentChangeColorMode": "standard",
 				"reduceOptions": {
-					"calcs": ["lastNotNull"],
+					"calcs": [
+						"lastNotNull"
+					],
 					"fields": "",
 					"values": false
 				},
@@ -302,7 +306,9 @@
 				"orientation": "auto",
 				"percentChangeColorMode": "standard",
 				"reduceOptions": {
-					"calcs": ["lastNotNull"],
+					"calcs": [
+						"lastNotNull"
+					],
 					"fields": "",
 					"values": false
 				},
@@ -368,7 +374,9 @@
 				"orientation": "auto",
 				"percentChangeColorMode": "standard",
 				"reduceOptions": {
-					"calcs": ["lastNotNull"],
+					"calcs": [
+						"lastNotNull"
+					],
 					"fields": "",
 					"values": false
 				},
@@ -440,7 +448,9 @@
 				"namePlacement": "auto",
 				"orientation": "vertical",
 				"reduceOptions": {
-					"calcs": ["lastNotNull"],
+					"calcs": [
+						"lastNotNull"
+					],
 					"fields": "",
 					"values": false
 				},
@@ -493,16 +503,24 @@
 			},
 			"id": 7,
 			"options": {
-				"displayLabels": ["name", "percent"],
+				"displayLabels": [
+					"name",
+					"percent"
+				],
 				"legend": {
 					"displayMode": "table",
 					"placement": "bottom",
 					"showLegend": true,
-					"values": ["value", "percent"]
+					"values": [
+						"value",
+						"percent"
+					]
 				},
 				"pieType": "pie",
 				"reduceOptions": {
-					"calcs": ["lastNotNull"],
+					"calcs": [
+						"lastNotNull"
+					],
 					"fields": "",
 					"values": false
 				},
@@ -578,7 +596,9 @@
 				"namePlacement": "auto",
 				"orientation": "horizontal",
 				"reduceOptions": {
-					"calcs": ["lastNotNull"],
+					"calcs": [
+						"lastNotNull"
+					],
 					"fields": "",
 					"values": false
 				},
@@ -631,16 +651,24 @@
 			},
 			"id": 9,
 			"options": {
-				"displayLabels": ["name", "percent"],
+				"displayLabels": [
+					"name",
+					"percent"
+				],
 				"legend": {
 					"displayMode": "table",
 					"placement": "bottom",
 					"showLegend": true,
-					"values": ["value", "percent"]
+					"values": [
+						"value",
+						"percent"
+					]
 				},
 				"pieType": "pie",
 				"reduceOptions": {
-					"calcs": ["lastNotNull"],
+					"calcs": [
+						"lastNotNull"
+					],
 					"fields": "",
 					"values": false
 				},
@@ -708,7 +736,9 @@
 				"orientation": "vertical",
 				"percentChangeColorMode": "standard",
 				"reduceOptions": {
-					"calcs": ["lastNotNull"],
+					"calcs": [
+						"lastNotNull"
+					],
 					"fields": "",
 					"values": false
 				},
@@ -774,7 +804,9 @@
 				"orientation": "vertical",
 				"percentChangeColorMode": "standard",
 				"reduceOptions": {
-					"calcs": ["lastNotNull"],
+					"calcs": [
+						"lastNotNull"
+					],
 					"fields": "",
 					"values": false
 				},
@@ -906,6 +938,355 @@
 			],
 			"transparent": true,
 			"type": "table"
+		},
+		{
+			"datasource": {
+				"type": "prometheus"
+			},
+			"fieldConfig": {
+				"defaults": {
+					"color": {
+						"fixedColor": "#B877D9",
+						"mode": "shades"
+					},
+					"thresholds": {
+						"mode": "absolute",
+						"steps": [
+							{
+								"color": "green",
+								"value": 0
+							},
+							{
+								"color": "red",
+								"value": 80
+							}
+						]
+					}
+				}
+			},
+			"gridPos": {
+				"h": 6,
+				"w": 8,
+				"x": 0,
+				"y": 55
+			},
+			"id": 13,
+			"options": {
+				"colorMode": "background",
+				"graphMode": "none",
+				"justifyMode": "auto",
+				"orientation": "auto",
+				"percentChangeColorMode": "standard",
+				"reduceOptions": {
+					"calcs": [
+						"lastNotNull"
+					],
+					"fields": "",
+					"values": false
+				},
+				"showPercentChange": false,
+				"textMode": "auto",
+				"wideLayout": true
+			},
+			"pluginVersion": "13.0.1",
+			"targets": [
+				{
+					"datasource": {
+						"type": "prometheus"
+					},
+					"editorMode": "code",
+					"expr": "active_site_users_global{instance=\"backend:3000\"}",
+					"instant": true,
+					"legendFormat": "__auto",
+					"range": false,
+					"refId": "A"
+				}
+			],
+			"title": "Активные пользователи сайта",
+			"transparent": true,
+			"type": "stat"
+		},
+		{
+			"datasource": {
+				"type": "prometheus"
+			},
+			"fieldConfig": {
+				"defaults": {
+					"color": {
+						"fixedColor": "#B877D9",
+						"mode": "shades"
+					},
+					"thresholds": {
+						"mode": "absolute",
+						"steps": [
+							{
+								"color": "green",
+								"value": 0
+							},
+							{
+								"color": "red",
+								"value": 80
+							}
+						]
+					}
+				}
+			},
+			"gridPos": {
+				"h": 6,
+				"w": 8,
+				"x": 8,
+				"y": 55
+			},
+			"id": 14,
+			"options": {
+				"colorMode": "background",
+				"graphMode": "none",
+				"justifyMode": "auto",
+				"orientation": "auto",
+				"percentChangeColorMode": "standard",
+				"reduceOptions": {
+					"calcs": [
+						"lastNotNull"
+					],
+					"fields": "",
+					"values": false
+				},
+				"showPercentChange": false,
+				"textMode": "auto",
+				"wideLayout": true
+			},
+			"pluginVersion": "13.0.1",
+			"targets": [
+				{
+					"datasource": {
+						"type": "prometheus"
+					},
+					"editorMode": "code",
+					"expr": "active_site_sessions_global{instance=\"backend:3000\"}",
+					"instant": true,
+					"legendFormat": "__auto",
+					"range": false,
+					"refId": "A"
+				}
+			],
+			"title": "Активные сессии сайта",
+			"transparent": true,
+			"type": "stat"
+		},
+		{
+			"datasource": {
+				"type": "prometheus"
+			},
+			"fieldConfig": {
+				"defaults": {
+					"color": {
+						"fixedColor": "#B877D9",
+						"mode": "shades"
+					},
+					"thresholds": {
+						"mode": "absolute",
+						"steps": [
+							{
+								"color": "green",
+								"value": 0
+							},
+							{
+								"color": "red",
+								"value": 80
+							}
+						]
+					}
+				}
+			},
+			"gridPos": {
+				"h": 6,
+				"w": 8,
+				"x": 16,
+				"y": 55
+			},
+			"id": 15,
+			"options": {
+				"colorMode": "background",
+				"graphMode": "none",
+				"justifyMode": "auto",
+				"orientation": "auto",
+				"percentChangeColorMode": "standard",
+				"reduceOptions": {
+					"calcs": [
+						"lastNotNull"
+					],
+					"fields": "",
+					"values": false
+				},
+				"showPercentChange": false,
+				"textMode": "auto",
+				"wideLayout": true
+			},
+			"pluginVersion": "13.0.1",
+			"targets": [
+				{
+					"datasource": {
+						"type": "prometheus"
+					},
+					"editorMode": "code",
+					"expr": "active_site_tabs_global{instance=\"backend:3000\"}",
+					"instant": true,
+					"legendFormat": "__auto",
+					"range": false,
+					"refId": "A"
+				}
+			],
+			"title": "Открытые вкладки сайта",
+			"transparent": true,
+			"type": "stat"
+		},
+		{
+			"datasource": {
+				"type": "prometheus",
+				"uid": "PBFA97CFB590B2093"
+			},
+			"fieldConfig": {
+				"defaults": {
+					"color": {
+						"mode": "palette-classic"
+					},
+					"thresholds": {
+						"mode": "absolute",
+						"steps": [
+							{
+								"color": "green",
+								"value": 0
+							},
+							{
+								"color": "red",
+								"value": 80
+							}
+						]
+					}
+				}
+			},
+			"gridPos": {
+				"h": 10,
+				"w": 12,
+				"x": 0,
+				"y": 61
+			},
+			"id": 16,
+			"options": {
+				"displayMode": "gradient",
+				"legend": {
+					"calcs": [],
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": false
+				},
+				"maxVizHeight": 300,
+				"minVizHeight": 16,
+				"minVizWidth": 8,
+				"namePlacement": "auto",
+				"orientation": "vertical",
+				"reduceOptions": {
+					"calcs": [
+						"lastNotNull"
+					],
+					"fields": "",
+					"values": false
+				},
+				"showUnfilled": true,
+				"sizing": "auto",
+				"valueMode": "color"
+			},
+			"pluginVersion": "13.0.1",
+			"targets": [
+				{
+					"datasource": {
+						"type": "prometheus",
+						"uid": "PBFA97CFB590B2093"
+					},
+					"editorMode": "code",
+					"expr": "sort_desc(active_site_users{instance=\"backend:3000\"} > 0)",
+					"legendFormat": "{{page}}",
+					"range": true,
+					"refId": "A"
+				}
+			],
+			"title": "Пользователи сайта по страницам",
+			"transparent": true,
+			"type": "bargauge"
+		},
+		{
+			"datasource": {
+				"type": "prometheus",
+				"uid": "PBFA97CFB590B2093"
+			},
+			"fieldConfig": {
+				"defaults": {
+					"color": {
+						"mode": "palette-classic"
+					},
+					"thresholds": {
+						"mode": "absolute",
+						"steps": [
+							{
+								"color": "green",
+								"value": 0
+							},
+							{
+								"color": "red",
+								"value": 80
+							}
+						]
+					}
+				}
+			},
+			"gridPos": {
+				"h": 10,
+				"w": 12,
+				"x": 12,
+				"y": 61
+			},
+			"id": 17,
+			"options": {
+				"displayMode": "gradient",
+				"legend": {
+					"calcs": [],
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": false
+				},
+				"maxVizHeight": 300,
+				"minVizHeight": 16,
+				"minVizWidth": 8,
+				"namePlacement": "auto",
+				"orientation": "vertical",
+				"reduceOptions": {
+					"calcs": [
+						"lastNotNull"
+					],
+					"fields": "",
+					"values": false
+				},
+				"showUnfilled": true,
+				"sizing": "auto",
+				"valueMode": "color"
+			},
+			"pluginVersion": "13.0.1",
+			"targets": [
+				{
+					"datasource": {
+						"type": "prometheus",
+						"uid": "PBFA97CFB590B2093"
+					},
+					"editorMode": "code",
+					"expr": "sort_desc(active_site_tabs{instance=\"backend:3000\"} > 0)",
+					"legendFormat": "{{page}}",
+					"range": true,
+					"refId": "A"
+				}
+			],
+			"title": "Вкладки сайта по страницам",
+			"transparent": true,
+			"type": "bargauge"
 		}
 	],
 	"preload": false,
@@ -931,7 +1312,7 @@
 	},
 	"timezone": "browser",
 	"title": "Dcote video player",
-	"version": 1,
+	"version": 2,
 	"uid": "dadad2",
 	"id": 463777304076288
 }
