@@ -84,7 +84,7 @@
 						"type": "prometheus"
 					},
 					"editorMode": "builder",
-					"expr": "active_viewers{instance=\"backend:3000\"}",
+					"expr": "sum(active_viewers{job=\"backend\"}) or vector(0)",
 					"legendFormat": "__auto",
 					"range": true,
 					"refId": "A"
@@ -188,7 +188,7 @@
 						"type": "prometheus"
 					},
 					"editorMode": "builder",
-					"expr": "active_viewers{instance=\"backend:3000\"}",
+					"expr": "sum(active_viewers{job=\"backend\"}) or vector(0)",
 					"legendFormat": "__auto",
 					"range": true,
 					"refId": "A"
@@ -254,7 +254,7 @@
 						"type": "prometheus"
 					},
 					"editorMode": "code",
-					"expr": "round(sum(increase(viewing_duration_seconds_count{instance=\"backend:3000\"}[$__range])))",
+					"expr": "round(sum(increase(viewing_duration_seconds_count{job=\"backend\"}[$__range]))) or vector(0)",
 					"instant": true,
 					"legendFormat": "__auto",
 					"range": false,
@@ -323,7 +323,7 @@
 						"type": "prometheus"
 					},
 					"editorMode": "code",
-					"expr": "(\r\n  sum(increase(viewing_duration_seconds_sum{instance=\"backend:3000\"}[$__range]))\r\n  /\r\n  (sum(increase(viewing_duration_seconds_count{instance=\"backend:3000\"}[$__range])) > 0)\r\n)\r\nor vector(0)",
+					"expr": "(\r\n  sum(increase(viewing_duration_seconds_sum{job=\"backend\"}[$__range]))\r\n  /\r\n  (sum(increase(viewing_duration_seconds_count{job=\"backend\"}[$__range])) > 0)\r\n)\r\nor vector(0)",
 					"instant": true,
 					"legendFormat": "__auto",
 					"range": false,
@@ -391,7 +391,7 @@
 						"type": "prometheus"
 					},
 					"editorMode": "code",
-					"expr": "sum(increase(viewing_duration_seconds_sum{instance=\"backend:3000\"}[$__range]))",
+					"expr": "sum(increase(viewing_duration_seconds_sum{job=\"backend\"}[$__range])) or vector(0)",
 					"instant": true,
 					"legendFormat": "__auto",
 					"range": false,
@@ -466,7 +466,7 @@
 						"uid": "PBFA97CFB590B2093"
 					},
 					"editorMode": "code",
-					"expr": "(round(sum by (country) (increase(viewing_duration_seconds_count{instance=\"backend:3000\"}[$__range]))) > 0)",
+					"expr": "(round(sum by (country) (increase(viewing_duration_seconds_count{job=\"backend\"}[$__range]))) > 0)",
 					"legendFormat": "__auto",
 					"range": true,
 					"refId": "A"
@@ -539,7 +539,7 @@
 						"uid": "PBFA97CFB590B2093"
 					},
 					"editorMode": "code",
-					"expr": "(round(sum by (country) (increase(viewing_duration_seconds_count{instance=\"backend:3000\"}[$__range]))) > 0)",
+					"expr": "(round(sum by (country) (increase(viewing_duration_seconds_count{job=\"backend\"}[$__range]))) > 0)",
 					"legendFormat": "__auto",
 					"range": true,
 					"refId": "A"
@@ -614,7 +614,7 @@
 						"uid": "PBFA97CFB590B2093"
 					},
 					"editorMode": "code",
-					"expr": "(round(sum by (season) (increase(viewing_duration_seconds_count{instance=\"backend:3000\"}[$__range]))) > 0)",
+					"expr": "(round(sum by (season) (increase(viewing_duration_seconds_count{job=\"backend\"}[$__range]))) > 0)",
 					"legendFormat": "__auto",
 					"range": true,
 					"refId": "A"
@@ -687,7 +687,7 @@
 						"uid": "PBFA97CFB590B2093"
 					},
 					"editorMode": "code",
-					"expr": "(round(sum by (season) (increase(viewing_duration_seconds_count{instance=\"backend:3000\"}[$__range]))) > 0)",
+					"expr": "(round(sum by (season) (increase(viewing_duration_seconds_count{job=\"backend\"}[$__range]))) > 0)",
 					"legendFormat": "__auto",
 					"range": true,
 					"refId": "A"
@@ -754,7 +754,7 @@
 						"uid": "PBFA97CFB590B2093"
 					},
 					"editorMode": "code",
-					"expr": "(round(sum by (voice) (increase(viewing_duration_seconds_count{instance=\"backend:3000\"}[$__range]))) > 0)",
+					"expr": "(round(sum by (voice) (increase(viewing_duration_seconds_count{job=\"backend\"}[$__range]))) > 0)",
 					"legendFormat": "__auto",
 					"range": true,
 					"refId": "A"
@@ -822,7 +822,7 @@
 						"uid": "PBFA97CFB590B2093"
 					},
 					"editorMode": "code",
-					"expr": "round(sum(increase(subtitles_enabled_total{instance=\"backend:3000\"}[$__range])))",
+					"expr": "round(sum(increase(subtitles_enabled_total{job=\"backend\"}[$__range]))) or vector(0)",
 					"instant": true,
 					"legendFormat": "__auto",
 					"range": false,
@@ -895,7 +895,7 @@
 					},
 					"editorMode": "code",
 					"exemplar": false,
-					"expr": "topk(10, (round(sum by (season, episode) (increase(viewing_duration_seconds_count{instance=\"backend:3000\"}[$__range]))) > 0))",
+					"expr": "topk(10, (round(sum by (season, episode) (increase(viewing_duration_seconds_count{job=\"backend\"}[$__range]))) > 0))",
 					"format": "table",
 					"instant": true,
 					"legendFormat": "__auto",
@@ -941,355 +941,6 @@
 		},
 		{
 			"datasource": {
-				"type": "prometheus"
-			},
-			"fieldConfig": {
-				"defaults": {
-					"color": {
-						"fixedColor": "#B877D9",
-						"mode": "shades"
-					},
-					"thresholds": {
-						"mode": "absolute",
-						"steps": [
-							{
-								"color": "green",
-								"value": 0
-							},
-							{
-								"color": "red",
-								"value": 80
-							}
-						]
-					}
-				}
-			},
-			"gridPos": {
-				"h": 6,
-				"w": 8,
-				"x": 0,
-				"y": 55
-			},
-			"id": 13,
-			"options": {
-				"colorMode": "background",
-				"graphMode": "none",
-				"justifyMode": "auto",
-				"orientation": "auto",
-				"percentChangeColorMode": "standard",
-				"reduceOptions": {
-					"calcs": [
-						"lastNotNull"
-					],
-					"fields": "",
-					"values": false
-				},
-				"showPercentChange": false,
-				"textMode": "auto",
-				"wideLayout": true
-			},
-			"pluginVersion": "13.0.1",
-			"targets": [
-				{
-					"datasource": {
-						"type": "prometheus"
-					},
-					"editorMode": "code",
-					"expr": "active_site_users_global{instance=\"backend:3000\"}",
-					"instant": true,
-					"legendFormat": "__auto",
-					"range": false,
-					"refId": "A"
-				}
-			],
-			"title": "Активные пользователи сайта",
-			"transparent": true,
-			"type": "stat"
-		},
-		{
-			"datasource": {
-				"type": "prometheus"
-			},
-			"fieldConfig": {
-				"defaults": {
-					"color": {
-						"fixedColor": "#B877D9",
-						"mode": "shades"
-					},
-					"thresholds": {
-						"mode": "absolute",
-						"steps": [
-							{
-								"color": "green",
-								"value": 0
-							},
-							{
-								"color": "red",
-								"value": 80
-							}
-						]
-					}
-				}
-			},
-			"gridPos": {
-				"h": 6,
-				"w": 8,
-				"x": 8,
-				"y": 55
-			},
-			"id": 14,
-			"options": {
-				"colorMode": "background",
-				"graphMode": "none",
-				"justifyMode": "auto",
-				"orientation": "auto",
-				"percentChangeColorMode": "standard",
-				"reduceOptions": {
-					"calcs": [
-						"lastNotNull"
-					],
-					"fields": "",
-					"values": false
-				},
-				"showPercentChange": false,
-				"textMode": "auto",
-				"wideLayout": true
-			},
-			"pluginVersion": "13.0.1",
-			"targets": [
-				{
-					"datasource": {
-						"type": "prometheus"
-					},
-					"editorMode": "code",
-					"expr": "active_site_sessions_global{instance=\"backend:3000\"}",
-					"instant": true,
-					"legendFormat": "__auto",
-					"range": false,
-					"refId": "A"
-				}
-			],
-			"title": "Активные сессии сайта",
-			"transparent": true,
-			"type": "stat"
-		},
-		{
-			"datasource": {
-				"type": "prometheus"
-			},
-			"fieldConfig": {
-				"defaults": {
-					"color": {
-						"fixedColor": "#B877D9",
-						"mode": "shades"
-					},
-					"thresholds": {
-						"mode": "absolute",
-						"steps": [
-							{
-								"color": "green",
-								"value": 0
-							},
-							{
-								"color": "red",
-								"value": 80
-							}
-						]
-					}
-				}
-			},
-			"gridPos": {
-				"h": 6,
-				"w": 8,
-				"x": 16,
-				"y": 55
-			},
-			"id": 15,
-			"options": {
-				"colorMode": "background",
-				"graphMode": "none",
-				"justifyMode": "auto",
-				"orientation": "auto",
-				"percentChangeColorMode": "standard",
-				"reduceOptions": {
-					"calcs": [
-						"lastNotNull"
-					],
-					"fields": "",
-					"values": false
-				},
-				"showPercentChange": false,
-				"textMode": "auto",
-				"wideLayout": true
-			},
-			"pluginVersion": "13.0.1",
-			"targets": [
-				{
-					"datasource": {
-						"type": "prometheus"
-					},
-					"editorMode": "code",
-					"expr": "active_site_tabs_global{instance=\"backend:3000\"}",
-					"instant": true,
-					"legendFormat": "__auto",
-					"range": false,
-					"refId": "A"
-				}
-			],
-			"title": "Открытые вкладки сайта",
-			"transparent": true,
-			"type": "stat"
-		},
-		{
-			"datasource": {
-				"type": "prometheus",
-				"uid": "PBFA97CFB590B2093"
-			},
-			"fieldConfig": {
-				"defaults": {
-					"color": {
-						"mode": "palette-classic"
-					},
-					"thresholds": {
-						"mode": "absolute",
-						"steps": [
-							{
-								"color": "green",
-								"value": 0
-							},
-							{
-								"color": "red",
-								"value": 80
-							}
-						]
-					}
-				}
-			},
-			"gridPos": {
-				"h": 10,
-				"w": 12,
-				"x": 0,
-				"y": 61
-			},
-			"id": 16,
-			"options": {
-				"displayMode": "gradient",
-				"legend": {
-					"calcs": [],
-					"displayMode": "list",
-					"placement": "bottom",
-					"showLegend": false
-				},
-				"maxVizHeight": 300,
-				"minVizHeight": 16,
-				"minVizWidth": 8,
-				"namePlacement": "auto",
-				"orientation": "vertical",
-				"reduceOptions": {
-					"calcs": [
-						"lastNotNull"
-					],
-					"fields": "",
-					"values": false
-				},
-				"showUnfilled": true,
-				"sizing": "auto",
-				"valueMode": "color"
-			},
-			"pluginVersion": "13.0.1",
-			"targets": [
-				{
-					"datasource": {
-						"type": "prometheus",
-						"uid": "PBFA97CFB590B2093"
-					},
-					"editorMode": "code",
-					"expr": "sort_desc(active_site_users{instance=\"backend:3000\"} > 0)",
-					"legendFormat": "{{page}}",
-					"range": true,
-					"refId": "A"
-				}
-			],
-			"title": "Пользователи сайта по страницам",
-			"transparent": true,
-			"type": "bargauge"
-		},
-		{
-			"datasource": {
-				"type": "prometheus",
-				"uid": "PBFA97CFB590B2093"
-			},
-			"fieldConfig": {
-				"defaults": {
-					"color": {
-						"mode": "palette-classic"
-					},
-					"thresholds": {
-						"mode": "absolute",
-						"steps": [
-							{
-								"color": "green",
-								"value": 0
-							},
-							{
-								"color": "red",
-								"value": 80
-							}
-						]
-					}
-				}
-			},
-			"gridPos": {
-				"h": 10,
-				"w": 12,
-				"x": 12,
-				"y": 61
-			},
-			"id": 17,
-			"options": {
-				"displayMode": "gradient",
-				"legend": {
-					"calcs": [],
-					"displayMode": "list",
-					"placement": "bottom",
-					"showLegend": false
-				},
-				"maxVizHeight": 300,
-				"minVizHeight": 16,
-				"minVizWidth": 8,
-				"namePlacement": "auto",
-				"orientation": "vertical",
-				"reduceOptions": {
-					"calcs": [
-						"lastNotNull"
-					],
-					"fields": "",
-					"values": false
-				},
-				"showUnfilled": true,
-				"sizing": "auto",
-				"valueMode": "color"
-			},
-			"pluginVersion": "13.0.1",
-			"targets": [
-				{
-					"datasource": {
-						"type": "prometheus",
-						"uid": "PBFA97CFB590B2093"
-					},
-					"editorMode": "code",
-					"expr": "sort_desc(active_site_tabs{instance=\"backend:3000\"} > 0)",
-					"legendFormat": "{{page}}",
-					"range": true,
-					"refId": "A"
-				}
-			],
-			"title": "Вкладки сайта по страницам",
-			"transparent": true,
-			"type": "bargauge"
-		},
-		{
-			"datasource": {
 				"type": "prometheus",
 				"uid": "PBFA97CFB590B2093"
 			},
@@ -1330,7 +981,7 @@
 				"h": 12,
 				"w": 24,
 				"x": 0,
-				"y": 71
+				"y": 55
 			},
 			"id": 18,
 			"options": {
@@ -1347,7 +998,7 @@
 					},
 					"editorMode": "code",
 					"exemplar": false,
-					"expr": "sort_desc((round(sum by (season, episode, voice) (increase(viewing_duration_seconds_count{instance=\"backend:3000\"}[$__range]))) > 0))",
+					"expr": "sort_desc((round(sum by (season, episode, voice) (increase(viewing_duration_seconds_count{job=\"backend\"}[$__range]))) > 0))",
 					"format": "table",
 					"instant": true,
 					"legendFormat": "__auto",
@@ -1435,7 +1086,7 @@
 				"h": 12,
 				"w": 24,
 				"x": 0,
-				"y": 83
+				"y": 67
 			},
 			"id": 19,
 			"options": {
@@ -1452,7 +1103,7 @@
 					},
 					"editorMode": "code",
 					"exemplar": false,
-					"expr": "sort_desc((round(sum by (season, episode) (increase(subtitles_enabled_total{instance=\"backend:3000\"}[$__range]))) > 0))",
+					"expr": "sort_desc((round(sum by (season, episode) (increase(subtitles_enabled_total{job=\"backend\"}[$__range]))) > 0))",
 					"format": "table",
 					"instant": true,
 					"legendFormat": "__auto",
@@ -1520,7 +1171,7 @@
 	},
 	"timezone": "browser",
 	"title": "Dcote video player",
-	"version": 3,
+	"version": 5,
 	"uid": "dadad2",
 	"id": 463777304076288
 }
