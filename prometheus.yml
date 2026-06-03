@@ -9,4 +9,4 @@ scrape_configs:
           credentials: "SUPERSECRETPASSWORD"
     - job_name: "node"
       static_configs:
-          - targets: ["host.docker.internal:9100"]
+          - targets: ["172.19.0.1:9100"]
