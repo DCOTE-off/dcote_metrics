@@ -45,7 +45,7 @@ const activeSiteSessions = new client.Gauge({
 
 const activeSiteUsers = new client.Gauge({
 	name: "active_site_users",
-	help: "Currently active authenticated users by page",
+	help: "Currently active registered browser sessions by page",
 	labelNames: ["page"],
 	registers: [register],
 });
@@ -64,14 +64,7 @@ const activeSiteSessionsGlobal = new client.Gauge({
 
 const activeSiteUsersGlobal = new client.Gauge({
 	name: "active_site_users_global",
-	help: "Currently active authenticated users across all pages",
-	registers: [register],
-});
-
-const activeSiteUserSessionStartedAt = new client.Gauge({
-	name: "active_site_user_session_started_at_seconds",
-	help: "Unix timestamp when an active authenticated site user session started",
-	labelNames: ["user_id", "login", "role", "page"],
+	help: "Currently active registered browser sessions across all pages",
 	registers: [register],
 });
 
@@ -119,5 +112,4 @@ export {
 	activeSiteTabsGlobal,
 	activeSiteSessionsGlobal,
 	activeSiteUsersGlobal,
-	activeSiteUserSessionStartedAt,
 };

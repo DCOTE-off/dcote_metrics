@@ -121,9 +121,8 @@ WS  /metrics/site/ws
 ```blade
 <script>
 	window.DCOTE_SITE_METRICS = {
-		userId: @json(auth()->id()),
-		login: @json(auth()->user()?->login ?? auth()->user()?->email),
-		role: @json(auth()->user()?->role),
+		metricsBaseUrl: "https://video.dcote.net/metrics-api",
+		userId: @json(auth()->check()),
 		page: @json(request()->route()?->getName() ?? request()->route()?->uri() ?? request()->path()),
 	};
 </script>
