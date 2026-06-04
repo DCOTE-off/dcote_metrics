@@ -72,10 +72,22 @@
 		return config.userId ?? null;
 	}
 
+	function getLogin() {
+		if (typeof config.getLogin === "function") return config.getLogin();
+		return config.login ?? config.userLogin ?? null;
+	}
+
+	function getRole() {
+		if (typeof config.getRole === "function") return config.getRole();
+		return config.role ?? null;
+	}
+
 	function getPayload() {
 		return {
 			page: getPage(),
 			userId: getUserId(),
+			login: getLogin(),
+			role: getRole(),
 			sessionId: getSessionId(),
 			tabId,
 		};

@@ -68,6 +68,13 @@ const activeSiteUsersGlobal = new client.Gauge({
 	registers: [register],
 });
 
+const activeSiteUserSessionStartedAt = new client.Gauge({
+	name: "active_site_user_session_started_at_seconds",
+	help: "Unix timestamp when an active authenticated site user session started",
+	labelNames: ["user_id", "login", "role", "page"],
+	registers: [register],
+});
+
 function initTestSeedDatas() {
 	const datas = [
 		{ country: "KZ", season: 1, episode: 3, voice: "DUB" },
@@ -112,4 +119,5 @@ export {
 	activeSiteTabsGlobal,
 	activeSiteSessionsGlobal,
 	activeSiteUsersGlobal,
+	activeSiteUserSessionStartedAt,
 };

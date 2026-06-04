@@ -122,6 +122,8 @@ WS  /metrics/site/ws
 <script>
 	window.DCOTE_SITE_METRICS = {
 		userId: @json(auth()->id()),
+		login: @json(auth()->user()?->login ?? auth()->user()?->email),
+		role: @json(auth()->user()?->role),
 		page: @json(request()->route()?->getName() ?? request()->route()?->uri() ?? request()->path()),
 	};
 </script>

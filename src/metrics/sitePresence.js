@@ -5,6 +5,7 @@ import {
 	activeSiteTabsGlobal,
 	activeSiteSessionsGlobal,
 	activeSiteUsersGlobal,
+	activeSiteUserSessionStartedAt,
 } from "./metrics.js";
 
 const SITE_PRESENCE_TTL_MS = 45 * 1000;
@@ -62,16 +63,30 @@ function normalizeId(value) {
 	return normalizeMetricString(value, null, 120);
 }
 
+function normalizeUserField(value, fallback = "unknown") {
+	return normalizeMetricString(value, fallback, 80);
+}
+
 function getPayloadValue(payload, previous, key) {
 	return Object.hasOwn(payload, key) ? payload[key] : previous?.[key];
 }
 
 function removeDuplicateTabConnections(connectionId, tabId) {
+	let removedConnection = null;
+
 	for (const [otherConnectionId, connection] of activeConnections) {
 		if (otherConnectionId !== connectionId && connection.tabId === tabId) {
+			if (
+				!removedConnection
+				|| connection.startedAt < removedConnection.startedAt
+			) {
+				removedConnection = connection;
+			}
 			activeConnections.delete(otherConnectionId);
 		}
 	}
+
+	return removedConnection;
 }
 
 function setZeroForSeenPages() {
@@ -84,10 +99,12 @@ function setZeroForSeenPages() {
 
 function updateSitePresenceMetrics() {
 	const pageStats = new Map();
+	const userSessions = new Map();
 	const sessions = new Set();
 	const users = new Set();
 
 	setZeroForSeenPages();
+	activeSiteUserSessionStartedAt.reset();
 
 	for (const connection of activeConnections.values()) {
 		const page = connection.page;
@@ -109,6 +126,27 @@ function updateSitePresenceMetrics() {
 		if (connection.userId) {
 			stats.users.add(connection.userId);
 			users.add(connection.userId);
+
+			const userSessionKey = [
+				connection.userId,
+				connection.login,
+				connection.role,
+				connection.page,
+			].join("\0");
+			const currentUserSession = userSessions.get(userSessionKey);
+
+			if (
+				!currentUserSession
+				|| connection.startedAt < currentUserSession.startedAt
+			) {
+				userSessions.set(userSessionKey, {
+					userId: connection.userId,
+					login: connection.login,
+					role: connection.role,
+					page: connection.page,
+					startedAt: connection.startedAt,
+				});
+			}
 		}
 	}
 
@@ -122,6 +160,18 @@ function updateSitePresenceMetrics() {
 	activeSiteTabsGlobal.set(activeConnections.size);
 	activeSiteSessionsGlobal.set(sessions.size);
 	activeSiteUsersGlobal.set(users.size);
+
+	for (const userSession of userSessions.values()) {
+		activeSiteUserSessionStartedAt.set(
+			{
+				user_id: userSession.userId,
+				login: userSession.login,
+				role: userSession.role,
+				page: userSession.page,
+			},
+			userSession.startedAt / 1000,
+		);
+	}
 }
 
 function cleanupStaleSitePresenceConnections() {
@@ -160,6 +210,14 @@ function touchSitePresenceConnection(connectionId, payload = {}) {
 	);
 	const tabId = normalizeId(getPayloadValue(payload, previous, "tabId"));
 	const userId = normalizeId(getPayloadValue(payload, previous, "userId"));
+	const login = normalizeUserField(
+		getPayloadValue(payload, previous, "login"),
+		userId || "unknown",
+	);
+	const role = normalizeUserField(
+		getPayloadValue(payload, previous, "role"),
+		"unknown",
+	);
 
 	if (!sessionId || !tabId) {
 		return {
@@ -168,13 +226,22 @@ function touchSitePresenceConnection(connectionId, payload = {}) {
 		};
 	}
 
-	removeDuplicateTabConnections(connectionId, tabId);
+	const duplicateConnection = removeDuplicateTabConnections(
+		connectionId,
+		tabId,
+	);
 
 	activeConnections.set(connectionId, {
 		page,
 		sessionId,
 		tabId,
 		userId,
+		login,
+		role,
+		startedAt:
+			previous?.startedAt
+			?? duplicateConnection?.startedAt
+			?? Date.now(),
 		updatedAt: Date.now(),
 	});
 
