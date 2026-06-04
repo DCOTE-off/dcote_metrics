@@ -1,7 +1,8 @@
 import Fastify from "fastify";
 import fastifyWebsocket from "@fastify/websocket";
-import { join } from "path";
-import { readFile } from "fs/promises";
+import { createReadStream } from "fs";
+import { extname, isAbsolute, join, relative, resolve } from "path";
+import { readFile, stat } from "fs/promises";
 import metricsRoute from "./metrics/router.js";
 
 const fastify = Fastify({
@@ -28,6 +29,21 @@ const sitePresenceTrackerPath = join(
 	"site-presence-tracker.js",
 );
 const sitePresenceTrackerFile = await readFile(sitePresenceTrackerPath);
+const testAssetsRootPath = resolve(process.cwd(), "test");
+const testAssetTypes = new Map([
+	[".m3u8", "application/vnd.apple.mpegurl"],
+	[".ts", "video/mp2t"],
+	[".vtt", "text/vtt"],
+	[".mp4", "video/mp4"],
+	[".m4s", "video/iso.segment"],
+	[".m4a", "audio/mp4"],
+	[".aac", "audio/aac"],
+]);
+
+function getTestAssetType(filePath) {
+	return testAssetTypes.get(extname(filePath).toLowerCase())
+		|| "application/octet-stream";
+}
 
 fastify.get("/videoplayer", async (req, reply) => {
 	reply.type("text/html").send(videoPlayerFile);
@@ -43,6 +59,42 @@ fastify.get("/site-presence-tracker.js", async (req, reply) => {
 
 fastify.get("/metrics-api/site-presence-tracker.js", async (req, reply) => {
 	reply.type("application/javascript").send(sitePresenceTrackerFile);
+});
+
+fastify.get("/test/*", async (req, reply) => {
+	const requestPath = req.params["*"] || "";
+	if (requestPath.includes("\0")) {
+		return reply.code(400).send({ error: "Bad request" });
+	}
+
+	let decodedPath;
+	try {
+		decodedPath = decodeURIComponent(requestPath);
+	} catch {
+		return reply.code(400).send({ error: "Bad request" });
+	}
+
+	const filePath = resolve(testAssetsRootPath, decodedPath);
+	const pathInsideTestRoot = relative(testAssetsRootPath, filePath);
+	if (
+		pathInsideTestRoot.startsWith("..")
+		|| isAbsolute(pathInsideTestRoot)
+	) {
+		return reply.code(403).send({ error: "Forbidden" });
+	}
+
+	try {
+		const fileStat = await stat(filePath);
+		if (!fileStat.isFile()) {
+			return reply.code(404).send({ error: "Not found" });
+		}
+	} catch {
+		return reply.code(404).send({ error: "Not found" });
+	}
+
+	reply.header("Cache-Control", "no-store");
+	reply.type(getTestAssetType(filePath));
+	return reply.send(createReadStream(filePath));
 });
 
 fastify.register(fastifyWebsocket);
