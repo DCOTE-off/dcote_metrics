@@ -979,57 +979,7 @@
 							}
 						]
 					}
-				},
-				"overrides": [
-					{
-						"matcher": {
-							"id": "byName",
-							"options": "Сезон"
-						},
-						"properties": [
-							{
-								"id": "custom.width",
-								"value": 72
-							}
-						]
-					},
-					{
-						"matcher": {
-							"id": "byName",
-							"options": "Серия"
-						},
-						"properties": [
-							{
-								"id": "custom.width",
-								"value": 72
-							}
-						]
-					},
-					{
-						"matcher": {
-							"id": "byName",
-							"options": "Озвучка"
-						},
-						"properties": [
-							{
-								"id": "custom.width",
-								"value": 260
-							}
-						]
-					},
-					{
-						"matcher": {
-							"id": "byName",
-							"options": "Просмотры"
-						},
-						"properties": [
-							{
-								"id": "custom.width",
-								"value": 120
-							}
-						]
-					}
-				]
+				}
 			},
 			"gridPos": {
 				"h": 12,
