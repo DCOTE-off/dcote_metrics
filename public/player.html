@@ -665,6 +665,17 @@
 				}
 				await player.attach(video);
 
+				const usesMobileLayout = window.matchMedia(
+					"(max-width: 900px), (pointer: coarse) and (max-height: 500px)",
+				).matches;
+				player.configure({
+					abr: {
+						restrictions: {
+							maxHeight: usesMobileLayout ? 720 : 1080,
+						},
+					},
+				});
+
 				video.addEventListener("play", () => {
 					initViewingTime();
 				});
