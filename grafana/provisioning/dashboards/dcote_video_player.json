@@ -170,10 +170,14 @@
 					"multiLane": false
 				},
 				"legend": {
-					"calcs": [],
-					"displayMode": "list",
+					"calcs": [
+						"min",
+						"max",
+						"lastNotNull"
+					],
+					"displayMode": "table",
 					"placement": "bottom",
-					"showLegend": false
+					"showLegend": true
 				},
 				"tooltip": {
 					"hideZeros": false,
@@ -189,7 +193,7 @@
 					},
 					"editorMode": "builder",
 					"expr": "sum(active_viewers{job=\"backend\"}) or vector(0)",
-					"legendFormat": "__auto",
+					"legendFormat": "Онлайн зрители",
 					"range": true,
 					"refId": "A"
 				}
@@ -878,7 +882,7 @@
 				"h": 12,
 				"w": 24,
 				"x": 0,
-				"y": 67
+				"y": 55
 			},
 			"id": 11,
 			"options": {
@@ -975,11 +979,61 @@
 							}
 						]
 					}
-				}
+				},
+				"overrides": [
+					{
+						"matcher": {
+							"id": "byName",
+							"options": "Сезон"
+						},
+						"properties": [
+							{
+								"id": "custom.width",
+								"value": 72
+							}
+						]
+					},
+					{
+						"matcher": {
+							"id": "byName",
+							"options": "Серия"
+						},
+						"properties": [
+							{
+								"id": "custom.width",
+								"value": 72
+							}
+						]
+					},
+					{
+						"matcher": {
+							"id": "byName",
+							"options": "Озвучка"
+						},
+						"properties": [
+							{
+								"id": "custom.width",
+								"value": 260
+							}
+						]
+					},
+					{
+						"matcher": {
+							"id": "byName",
+							"options": "Просмотры"
+						},
+						"properties": [
+							{
+								"id": "custom.width",
+								"value": 120
+							}
+						]
+					}
+				]
 			},
 			"gridPos": {
 				"h": 12,
-				"w": 24,
+				"w": 12,
 				"x": 0,
 				"y": 43
 			},
@@ -1084,9 +1138,9 @@
 			},
 			"gridPos": {
 				"h": 12,
-				"w": 24,
-				"x": 0,
-				"y": 55
+				"w": 12,
+				"x": 12,
+				"y": 43
 			},
 			"id": 19,
 			"options": {
