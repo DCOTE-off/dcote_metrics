@@ -4,10 +4,10 @@
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<title>Player</title>
-		<script src="https://cdn.jsdelivr.net/npm/shaka-player@5/dist/shaka-player.ui.js"></script>
+		<script src="https://cdn.jsdelivr.net/npm/shaka-player@5.1.6/dist/shaka-player.ui.js"></script>
 		<link
 			rel="stylesheet"
-			href="https://cdn.jsdelivr.net/npm/shaka-player@5/dist/controls.css"
+			href="https://cdn.jsdelivr.net/npm/shaka-player@5.1.6/dist/controls.css"
 		/>
 		<style>
 			@font-face {
@@ -91,20 +91,19 @@
 				transform: translateX(-1px);
 			}
 
-			.shaka-text-container,
-			.shaka-text-container span,
-			.shaka-text-container div,
-			.shaka-text-container * {
+			.shaka-text-container {
+				inset: 0 !important;
+				width: 100% !important;
+				height: 100% !important;
+				pointer-events: none;
+			}
+
+			.shaka-text-container [translate="no"],
+			.shaka-text-container .shaka-text-wrapper {
 				background: transparent !important;
 				background-color: transparent !important;
 				border-radius: 0 !important;
 				box-shadow: none !important;
-			}
-
-			.shaka-text-container,
-			.shaka-text-container span,
-			.shaka-text-container div,
-			.shaka-text-container * {
 				font-family: "VAG Rounded Next", Arial, sans-serif !important;
 				font-weight: 700 !important;
 				color: #fff !important;
@@ -113,9 +112,6 @@
 				line-height: 0.82 !important;
 				line-height: min(0.95em, 52px) !important;
 				letter-spacing: 0 !important;
-				text-align: center !important;
-				margin-top: 0 !important;
-				margin-bottom: 0 !important;
 				text-shadow:
 					0 0.075em 0 #000,
 					0 -0.075em 0 #000,
@@ -136,25 +132,20 @@
 					0 0.11em 0.22em rgba(0, 0, 0, 0.85) !important;
 			}
 
-			.shaka-text-container {
-				inset: auto 6% 6% 4% !important;
-				width: auto !important;
-				height: auto !important;
-				pointer-events: none;
-			}
-
-			.shaka-text-container span {
-				display: inline !important;
+			.shaka-text-container [translate="no"] {
 				box-decoration-break: clone;
 				-webkit-box-decoration-break: clone;
 				border-radius: 0 !important;
 				padding: 0 !important;
-				white-space: pre-wrap !important;
 			}
 
-			.shaka-text-container div + div,
-			.shaka-text-container span + span {
-				margin-top: -0.18em !important;
+			#player-container.ass-subtitles-active .shaka-text-container {
+				visibility: hidden !important;
+			}
+
+			#player-container .JASSUB {
+				pointer-events: none;
+				visibility: hidden;
 			}
 
 			video::cue {
@@ -226,23 +217,12 @@
 			}
 
 			@media (max-width: 900px), (pointer: coarse) and (max-height: 500px) {
-				.shaka-text-container,
-				.shaka-text-container span,
-				.shaka-text-container div,
-				.shaka-text-container * {
+				.shaka-text-container [translate="no"],
+				.shaka-text-container .shaka-text-wrapper {
 					font-size: clamp(14px, 4.2vw, 24px) !important;
 					font-size: clamp(14px, min(4.2vw, 6vh), 24px) !important;
 					line-height: 0.95 !important;
 					line-height: min(0.95em, 23px) !important;
-				}
-
-				.shaka-text-container {
-					inset: auto 5% 13% 5% !important;
-				}
-
-				.shaka-text-container div + div,
-				.shaka-text-container span + span {
-					margin-top: -0.16em !important;
 				}
 
 				video::cue {
@@ -323,6 +303,7 @@
 				stage == "dev"
 					? location.origin
 					: "https://video.dcote.net/metrics-api";
+			const playerAssetBase = backendUrl;
 			const websocketUrl =
 				stage == "dev"
 					? `${location.protocol === "https:" ? "wss" : "ws"}://${
@@ -367,6 +348,14 @@
 			};
 			let metricPlayer = null;
 			let metricVideo = null;
+			const assSubtitles = {
+				renderer: null,
+				language: "ru",
+				ready: false,
+				status: "idle",
+				error: null,
+				bottomMargin: null,
+			};
 			const subtitleMetric = {
 				activeSeconds: 0,
 				activeStartedAt: null,
@@ -374,6 +363,272 @@
 				thresholdSeconds: 30,
 				timerId: null,
 			};
+			function getActiveTextTrack(player) {
+				if (!player || typeof player.getTextTracks !== "function") {
+					return null;
+				}
+				return player.getTextTracks().find((track) => track.active) || null;
+			}
+			function syncAssSubtitleVisibility(player) {
+				const container = document.getElementById("player-container");
+				const canvas = assSubtitles.renderer?._canvas;
+				const shouldShow =
+					assSubtitles.ready &&
+					canvas &&
+					player.isTextTrackVisible();
+
+				if (canvas) {
+					canvas.style.visibility = shouldShow ? "visible" : "hidden";
+				}
+				container.classList.toggle("ass-subtitles-active", Boolean(shouldShow));
+				container.dataset.subtitleRenderer = shouldShow ? "ass" : "vtt";
+				updateSubtitleDebugLabel(player);
+			}
+			function updateSubtitleDebugLabel(player) {
+				if (playerParams.get("subtitle_debug") !== "1") return;
+
+				let label = document.getElementById("subtitle-debug-label");
+				if (!label) {
+					label = document.createElement("div");
+					label.id = "subtitle-debug-label";
+					Object.assign(label.style, {
+						position: "fixed",
+						top: "8px",
+						left: "8px",
+						zIndex: "1000",
+						padding: "6px 8px",
+						background: "rgba(0, 0, 0, 0.8)",
+						color: "#fff",
+						font: "12px monospace",
+						pointerEvents: "none",
+					});
+					document.body.appendChild(label);
+				}
+
+				label.textContent = [
+					`renderer=${document.getElementById("player-container").dataset.subtitleRenderer || "vtt"}`,
+					`ass=${assSubtitles.status}`,
+					`captions=${player.isTextTrackVisible() ? "on" : "off"}`,
+					`margin=${assSubtitles.bottomMargin ?? "-"}`,
+					assSubtitles.error ? `error=${assSubtitles.error}` : "",
+				]
+					.filter(Boolean)
+					.join(" | ");
+			}
+			function raiseBottomAssStyles(subContent, bottomMarginPercent) {
+				const percent = Math.min(
+					40,
+					Math.max(0, Number(bottomMarginPercent) || 0),
+				);
+				if (!percent) return subContent;
+
+				const lines = subContent.split(/\r?\n/);
+				const playResYLine = lines.find((line) =>
+					/^PlayResY\s*:/i.test(line),
+				);
+				const playResY = Number(playResYLine?.split(":")[1]) || 360;
+				const minimumMargin = Math.round((playResY * percent) / 100);
+				let section = "";
+				let styleFormat = [];
+
+				return lines
+					.map((line) => {
+						const sectionMatch = line.match(/^\s*\[([^\]]+)\]\s*$/);
+						if (sectionMatch) {
+							section = sectionMatch[1].toLowerCase();
+							return line;
+						}
+						if (section !== "v4+ styles") return line;
+
+						const formatMatch = line.match(/^\s*Format\s*:\s*(.+)$/i);
+						if (formatMatch) {
+							styleFormat = formatMatch[1]
+								.split(",")
+								.map((field) => field.trim().toLowerCase());
+							return line;
+						}
+
+						const styleMatch = line.match(/^(\s*Style\s*:\s*)(.+)$/i);
+						if (!styleMatch || !styleFormat.length) return line;
+
+						const fields = styleMatch[2].split(",");
+						const alignmentIndex = styleFormat.indexOf("alignment");
+						const marginVIndex = styleFormat.indexOf("marginv");
+						const alignment = Number(fields[alignmentIndex]);
+						if (
+							!Number.isInteger(alignment) ||
+							alignment < 1 ||
+							alignment > 3 ||
+							marginVIndex < 0
+						) {
+							return line;
+						}
+
+						const currentMargin = Number(fields[marginVIndex]) || 0;
+						fields[marginVIndex] = String(
+							Math.max(currentMargin, minimumMargin),
+						);
+						return styleMatch[1] + fields.join(",");
+					})
+					.join("\n");
+			}
+			async function applyBottomAssStyleMargin(
+				renderer,
+				subContent,
+				bottomMarginPercent,
+			) {
+				const playResYLine = subContent
+					.split(/\r?\n/)
+					.find((line) => /^PlayResY\s*:/i.test(line));
+				const playResY = Number(playResYLine?.split(":")[1]) || 360;
+				const minimumMargin = Math.round(
+					(playResY * bottomMarginPercent) / 100,
+				);
+				const styles = await renderer.renderer.getStyles();
+
+				for (let index = 0; index < styles.length; index += 1) {
+					const style = styles[index];
+					if (style.Alignment < 1 || style.Alignment > 3) continue;
+					if (style.MarginV >= minimumMargin) continue;
+					await renderer.renderer.setStyle(
+						{ ...style, MarginV: minimumMargin },
+						index,
+					);
+				}
+
+				assSubtitles.bottomMargin = minimumMargin;
+			}
+			async function pinBottomAssEvents(
+				renderer,
+				subContent,
+				bottomMarginPercent,
+			) {
+				const lines = subContent.split(/\r?\n/);
+				const playResXLine = lines.find((line) =>
+					/^PlayResX\s*:/i.test(line),
+				);
+				const playResYLine = lines.find((line) =>
+					/^PlayResY\s*:/i.test(line),
+				);
+				const playResX = Number(playResXLine?.split(":")[1]) || 640;
+				const playResY = Number(playResYLine?.split(":")[1]) || 360;
+				const y = Math.round(
+					playResY * (1 - bottomMarginPercent / 100),
+				);
+				const styles = await renderer.renderer.getStyles();
+				const events = await renderer.renderer.getEvents();
+
+				for (let index = 0; index < events.length; index += 1) {
+					const event = events[index];
+					const style = styles[event.Style];
+					if (!style || /\\(?:pos|move)\s*\(/i.test(event.Text)) {
+						continue;
+					}
+
+					const inlineAlignment = event.Text.match(/\\an([1-9])/i);
+					const alignment = Number(inlineAlignment?.[1]) || style.Alignment;
+					if (alignment < 1 || alignment > 3) continue;
+
+					const marginL = event.MarginL || style.MarginL;
+					const marginR = event.MarginR || style.MarginR;
+					const x =
+						alignment === 1
+							? marginL
+							: alignment === 3
+								? playResX - marginR
+								: Math.round(playResX / 2);
+					const positionOverride = `{\\an${alignment}\\pos(${x},${y})}`;
+					await renderer.renderer.setEvent(
+						{ ...event, Text: positionOverride + event.Text },
+						index,
+					);
+				}
+			}
+			async function initAssSubtitles(
+				player,
+				video,
+				assUrl,
+				bottomMarginPercent,
+			) {
+				try {
+					assSubtitles.status = "loading";
+					assSubtitles.error = null;
+					updateSubtitleDebugLabel(player);
+					const subtitleResponse = await fetch(assUrl);
+					if (!subtitleResponse.ok) {
+						throw new Error(
+							`ASS request failed with status ${subtitleResponse.status}`,
+						);
+					}
+					const subContent = raiseBottomAssStyles(
+						await subtitleResponse.text(),
+						bottomMarginPercent,
+					);
+					const { default: JASSUB } = await import(
+						`${playerAssetBase}/vendor/jassub/jassub.js`
+					);
+					const subtitleFontUrl =
+						`${playerAssetBase}/fonts/vag-rounded-next-bold.woff2`;
+					const renderer = new JASSUB({
+						video,
+						subContent,
+						workerUrl: `${playerAssetBase}/vendor/jassub/jassub-worker.js`,
+						wasmUrl: `${playerAssetBase}/vendor/jassub/jassub-worker.wasm`,
+						modernWasmUrl:
+							`${playerAssetBase}/vendor/jassub/jassub-worker-modern.wasm`,
+						availableFonts: {
+							"vag rounded next": subtitleFontUrl,
+							tahoma: subtitleFontUrl,
+							georgia: subtitleFontUrl,
+						},
+						defaultFont: "vag rounded next",
+						queryFonts: false,
+					});
+
+					assSubtitles.renderer = renderer;
+					renderer._canvas.style.visibility = "hidden";
+					renderer._canvas.setAttribute("aria-hidden", "true");
+					await renderer.ready;
+					await applyBottomAssStyleMargin(
+						renderer,
+						subContent,
+						bottomMarginPercent,
+					);
+					await pinBottomAssEvents(
+						renderer,
+						subContent,
+						bottomMarginPercent,
+					);
+					assSubtitles.ready = true;
+					assSubtitles.status = "ready";
+					syncAssSubtitleVisibility(player);
+
+					["texttrackvisibility", "textchanged", "trackschanged"].forEach(
+						(eventName) => {
+							player.addEventListener(eventName, () => {
+								syncAssSubtitleVisibility(player);
+							});
+						},
+					);
+				} catch (error) {
+					console.warn(
+						"ASS subtitles unavailable; using WebVTT fallback.",
+						error,
+					);
+					document
+						.getElementById("player-container")
+						.classList.remove("ass-subtitles-active");
+					assSubtitles.ready = false;
+					assSubtitles.status = "error";
+					assSubtitles.error = String(error?.message || error).slice(0, 120);
+					const renderer = assSubtitles.renderer;
+					assSubtitles.renderer = null;
+					if (renderer) {
+						await renderer.destroy().catch(() => {});
+					}
+					updateSubtitleDebugLabel(player);
+				}
+			}
 			function normalizeMetricLabel(value) {
 				if (typeof value !== "string") return null;
 				const label = value.trim().replace(/\s+/g, " ");
@@ -690,6 +945,13 @@
 
 				const params = playerParams;
 				const src = params.get("src");
+				const assUrl = params.get("ass");
+				assSubtitles.language = (params.get("ass_lang") || "ru")
+					.split("-")[0]
+					.toLowerCase();
+				const assBottomMarginPercent = parseFloat(
+					params.get("ass_bottom_margin_percent") || "12",
+				);
 
 				const poster = params.get("poster");
 				const skipStart = parseFloat(params.get("skip_start") || "-1");
@@ -901,11 +1163,22 @@
 						initMetricDatas(src);
 						initAudioMetricTracking(player);
 						initSubtitleMetricTracking(player, video);
+						if (assUrl) {
+							initAssSubtitles(
+								player,
+								video,
+								assUrl,
+								assBottomMarginPercent,
+							);
+						}
 					} catch (e) {
 						onError(e);
 					}
 				}
 			}
+			window.addEventListener("pagehide", () => {
+				assSubtitles.renderer?.destroy().catch(() => {});
+			});
 			document.addEventListener("DOMContentLoaded", init);
 		</script>
 	</body>

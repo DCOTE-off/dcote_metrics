@@ -23,6 +23,19 @@ const subtitleFontPath = join(
 	"vag-rounded-next-bold.woff2",
 );
 const subtitleFontFile = await readFile(subtitleFontPath);
+const jassubVendorRootPath = join(
+	process.cwd(),
+	"public",
+	"vendor",
+	"jassub",
+);
+const jassubVendorAssets = new Map([
+	["jassub.js", "application/javascript"],
+	["jassub-worker.js", "application/javascript"],
+	["jassub-worker.wasm", "application/wasm"],
+	["jassub-worker-modern.wasm", "application/wasm"],
+	["LICENSE", "text/plain"],
+]);
 const sitePresenceTrackerPath = join(
 	process.cwd(),
 	"public",
@@ -34,6 +47,7 @@ const testAssetTypes = new Map([
 	[".m3u8", "application/vnd.apple.mpegurl"],
 	[".ts", "video/mp2t"],
 	[".vtt", "text/vtt"],
+	[".ass", "text/plain; charset=utf-8"],
 	[".mp4", "video/mp4"],
 	[".m4s", "video/iso.segment"],
 	[".m4a", "audio/mp4"],
@@ -49,9 +63,27 @@ fastify.get("/videoplayer", async (req, reply) => {
 	reply.type("text/html").send(videoPlayerFile);
 });
 
-fastify.get("/fonts/vag-rounded-next-bold.woff2", async (req, reply) => {
+async function sendSubtitleFont(req, reply) {
 	reply.type("font/woff2").send(subtitleFontFile);
-});
+}
+
+fastify.get("/fonts/vag-rounded-next-bold.woff2", sendSubtitleFont);
+fastify.get("/metrics-api/fonts/vag-rounded-next-bold.woff2", sendSubtitleFont);
+
+async function sendJassubVendorAsset(req, reply) {
+	const assetName = req.params.file;
+	const contentType = jassubVendorAssets.get(assetName);
+	if (!contentType) {
+		return reply.code(404).send({ error: "Not found" });
+	}
+
+	reply.header("Cache-Control", "public, max-age=31536000, immutable");
+	reply.type(contentType);
+	return reply.send(createReadStream(join(jassubVendorRootPath, assetName)));
+}
+
+fastify.get("/vendor/jassub/:file", sendJassubVendorAsset);
+fastify.get("/metrics-api/vendor/jassub/:file", sendJassubVendorAsset);
 
 fastify.get("/site-presence-tracker.js", async (req, reply) => {
 	reply.type("application/javascript").send(sitePresenceTrackerFile);
