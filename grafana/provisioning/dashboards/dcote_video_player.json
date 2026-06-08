@@ -471,8 +471,9 @@
 					},
 					"editorMode": "code",
 					"expr": "(round(sum by (country) (increase(video_views_total{job=\"backend\"}[$__range]))) > 0)",
+					"instant": true,
 					"legendFormat": "__auto",
-					"range": true,
+					"range": false,
 					"refId": "A"
 				}
 			],
@@ -544,8 +545,9 @@
 					},
 					"editorMode": "code",
 					"expr": "(round(sum by (country) (increase(video_views_total{job=\"backend\"}[$__range]))) > 0)",
+					"instant": true,
 					"legendFormat": "__auto",
-					"range": true,
+					"range": false,
 					"refId": "A"
 				}
 			],
@@ -619,8 +621,9 @@
 					},
 					"editorMode": "code",
 					"expr": "(round(sum by (season) (increase(video_views_total{job=\"backend\"}[$__range]))) > 0)",
+					"instant": true,
 					"legendFormat": "__auto",
-					"range": true,
+					"range": false,
 					"refId": "A"
 				}
 			],
@@ -692,8 +695,9 @@
 					},
 					"editorMode": "code",
 					"expr": "(round(sum by (season) (increase(video_views_total{job=\"backend\"}[$__range]))) > 0)",
+					"instant": true,
 					"legendFormat": "__auto",
-					"range": true,
+					"range": false,
 					"refId": "A"
 				}
 			],
@@ -759,8 +763,9 @@
 					},
 					"editorMode": "code",
 					"expr": "(round(sum by (voice) (increase(video_views_total{job=\"backend\"}[$__range]))) > 0)",
+					"instant": true,
 					"legendFormat": "__auto",
-					"range": true,
+					"range": false,
 					"refId": "A"
 				}
 			],
