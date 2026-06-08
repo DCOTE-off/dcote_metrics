@@ -2,7 +2,10 @@
 <html lang="ru">
 	<head>
 		<meta charset="UTF-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<meta
+			name="viewport"
+			content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+		/>
 		<title>Player</title>
 		<script src="https://cdn.jsdelivr.net/npm/shaka-player@5.1.6/dist/shaka-player.ui.js"></script>
 		<link
@@ -32,9 +35,13 @@
 
 			html,
 			body {
+				position: fixed;
+				inset: 0;
 				width: 100%;
 				height: 100%;
-				background: #000;
+				min-width: 100%;
+				min-height: 100%;
+				background: #000 !important;
 				overflow: hidden;
 			}
 
@@ -43,6 +50,20 @@
 				width: 100%;
 				height: 100%;
 				background: #000;
+				overflow: hidden;
+				--video-zoom: 1;
+				--video-pan-x: 0px;
+				--video-pan-y: 0px;
+			}
+
+			#player-container:fullscreen,
+			#player-container:-webkit-full-screen {
+				position: fixed;
+				inset: -1px;
+				width: auto;
+				height: auto;
+				background: #000 !important;
+				box-shadow: 0 0 0 2px #000;
 			}
 
 			#video {
@@ -52,13 +73,47 @@
 				object-fit: contain;
 			}
 
+			#video,
+			#poster-cover,
+			#player-container .JASSUB {
+				transform: translate3d(
+						var(--video-pan-x),
+						var(--video-pan-y),
+						0
+					)
+					scale(var(--video-zoom));
+				transform-origin: center;
+				transition: transform 0.18s ease-out;
+			}
+
+			#player-container.video-zoom-gesturing #video,
+			#player-container.video-zoom-gesturing #poster-cover,
+			#player-container.video-zoom-gesturing .JASSUB {
+				transition: none;
+			}
+
+			#player-container.video-zoom-touch-active {
+				touch-action: none;
+			}
+
+			#player-container .shaka-controls-container {
+				transition: opacity 0.2s ease !important;
+			}
+
+			#player-container.touch-controls-hidden .shaka-controls-container {
+				opacity: 0 !important;
+				pointer-events: none !important;
+			}
+
 			#poster-cover {
 				position: absolute;
 				inset: 0;
 				background: #000 center / contain no-repeat;
 				opacity: 0;
 				pointer-events: none;
-				transition: opacity 0.2s ease;
+				transition:
+					opacity 0.2s ease,
+					transform 0.18s ease-out;
 			}
 
 			#poster-cover.visible {
@@ -146,6 +201,67 @@
 			#player-container .JASSUB {
 				pointer-events: none;
 				visibility: hidden;
+			}
+
+			#video-zoom-feedback {
+				background: rgba(28, 28, 28, 0.88);
+				border-radius: 12px;
+				color: #fff;
+				font: 700 15px/1.2 "VAG Rounded Next", Arial, sans-serif;
+				left: 50%;
+				opacity: 0;
+				padding: 10px 14px;
+				pointer-events: none;
+				position: absolute;
+				top: 28px;
+				transform: translateX(-50%);
+				transition: opacity 0.18s ease;
+				z-index: 101;
+			}
+
+			#video-zoom-feedback.visible {
+				opacity: 1;
+			}
+
+			#mobile-context-menu {
+				background: rgba(28, 28, 28, 0.96);
+				border: 1px solid rgba(255, 255, 255, 0.12);
+				border-radius: 14px;
+				box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+				display: none;
+				min-width: 220px;
+				overflow: hidden;
+				position: absolute;
+				z-index: 200;
+			}
+
+			#mobile-context-menu.visible {
+				display: block;
+			}
+
+			#mobile-context-menu button {
+				background: transparent;
+				border: 0;
+				color: #fff;
+				display: block;
+				font: 700 15px/1.2 "VAG Rounded Next", Arial, sans-serif;
+				padding: 14px 16px;
+				text-align: left;
+				touch-action: manipulation;
+				width: 100%;
+			}
+
+			#mobile-context-menu button + button {
+				border-top: 1px solid rgba(255, 255, 255, 0.1);
+			}
+
+			#mobile-context-menu button:active,
+			#mobile-context-menu button.active {
+				background: rgba(255, 255, 255, 0.12);
+			}
+
+			#mobile-context-menu button:disabled {
+				color: rgba(255, 255, 255, 0.38);
 			}
 
 			video::cue {
@@ -277,6 +393,18 @@
 		<div id="player-container">
 			<video id="video" playsinline></video>
 			<div id="poster-cover" aria-hidden="true"></div>
+			<div id="video-zoom-feedback" aria-live="polite"></div>
+			<div id="mobile-context-menu" role="menu">
+				<button id="mobile-context-loop" type="button" role="menuitem">
+					Повтор
+				</button>
+				<button id="mobile-context-pip" type="button" role="menuitem">
+					Картинка в картинке
+				</button>
+				<button id="mobile-context-save-frame" type="button" role="menuitem">
+					Сохранить кадр видео
+				</button>
+			</div>
 			<div id="skip-btn">
 				<button id="skip-btn-dismiss">
 					<div id="skip-btn-dismiss-inner">
@@ -911,6 +1039,21 @@
 				const video = document.getElementById("video");
 				const container = document.getElementById("player-container");
 				const posterCover = document.getElementById("poster-cover");
+				const zoomFeedback = document.getElementById(
+					"video-zoom-feedback",
+				);
+				const mobileContextMenu = document.getElementById(
+					"mobile-context-menu",
+				);
+				const mobileContextLoop = document.getElementById(
+					"mobile-context-loop",
+				);
+				const mobileContextPip = document.getElementById(
+					"mobile-context-pip",
+				);
+				const mobileContextSaveFrame = document.getElementById(
+					"mobile-context-save-frame",
+				);
 				const skipBtn = document.getElementById("skip-btn");
 				const player = new shaka.Player(null, container);
 				metricPlayer = player;
@@ -1002,6 +1145,632 @@
 					seekBarColors: { played: "rgb(224, 11, 82)" },
 				});
 
+				const zoomState = {
+					scale: 1,
+					coverScale: 1,
+					mode: "fit",
+					feedbackTimer: null,
+					pinchStartDistance: null,
+					pinchStartScale: 1,
+					pinchStartCenter: null,
+					pinchStartPanX: 0,
+					pinchStartPanY: 0,
+					panX: 0,
+					panY: 0,
+					panStartPoint: null,
+					panStartX: 0,
+					panStartY: 0,
+					tapStartPoint: null,
+					tapStartTime: 0,
+					tapMoved: false,
+					tapStartedOnControls: false,
+					touchGestureCaptured: false,
+					longPressTimer: null,
+					longPressTriggered: false,
+					controlsAnimationTimer: null,
+				};
+				const getFullscreenElement = () =>
+					document.fullscreenElement ||
+					document.webkitFullscreenElement ||
+					null;
+				const isTouchZoomDevice =
+					window.matchMedia("(pointer: coarse)").matches ||
+					navigator.maxTouchPoints > 0;
+				const isPlayerFullscreen = () => {
+					const fullscreenElement = getFullscreenElement();
+					return (
+						fullscreenElement === container ||
+						container.contains(fullscreenElement)
+					);
+				};
+				const isZoomAllowed = () =>
+					isPlayerFullscreen() || isTouchZoomDevice;
+				container.classList.toggle(
+					"video-zoom-touch-active",
+					isTouchZoomDevice,
+				);
+				const calculateCoverScale = () => {
+					if (
+						!video.videoWidth ||
+						!video.videoHeight ||
+						!container.clientWidth ||
+						!container.clientHeight
+					) {
+						return 1;
+					}
+					const videoRatio = video.videoWidth / video.videoHeight;
+					const containerRatio =
+						container.clientWidth / container.clientHeight;
+					return Math.max(
+						containerRatio / videoRatio,
+						videoRatio / containerRatio,
+					);
+				};
+				const getTouchCenter = (touches) => ({
+					x: (touches[0].clientX + touches[1].clientX) / 2,
+					y: (touches[0].clientY + touches[1].clientY) / 2,
+				});
+				const getContainerCenterOffset = (point) => {
+					const bounds = container.getBoundingClientRect();
+					return {
+						x: point.x - bounds.left - bounds.width / 2,
+						y: point.y - bounds.top - bounds.height / 2,
+					};
+				};
+				const getPanLimits = (scale = zoomState.scale) => {
+					if (
+						!video.videoWidth ||
+						!video.videoHeight ||
+						!container.clientWidth ||
+						!container.clientHeight
+					) {
+						return { x: 0, y: 0 };
+					}
+					const videoRatio = video.videoWidth / video.videoHeight;
+					const containerRatio =
+						container.clientWidth / container.clientHeight;
+					const renderedWidth =
+						containerRatio > videoRatio
+							? container.clientHeight * videoRatio
+							: container.clientWidth;
+					const renderedHeight =
+						containerRatio > videoRatio
+							? container.clientHeight
+							: container.clientWidth / videoRatio;
+					return {
+						x: Math.max(
+							0,
+							(renderedWidth * scale - container.clientWidth) / 2,
+						),
+						y: Math.max(
+							0,
+							(renderedHeight * scale - container.clientHeight) / 2,
+						),
+					};
+				};
+				const setVideoPan = (nextX, nextY, scale = zoomState.scale) => {
+					const limits = getPanLimits(scale);
+					zoomState.panX = Math.min(
+						limits.x,
+						Math.max(-limits.x, nextX),
+					);
+					zoomState.panY = Math.min(
+						limits.y,
+						Math.max(-limits.y, nextY),
+					);
+					container.style.setProperty(
+						"--video-pan-x",
+						`${zoomState.panX.toFixed(2)}px`,
+					);
+					container.style.setProperty(
+						"--video-pan-y",
+						`${zoomState.panY.toFixed(2)}px`,
+					);
+				};
+				const getZoomLabel = () => {
+					if (zoomState.scale <= 1.01) {
+						return "\u041f\u043e \u0440\u0430\u0437\u043c\u0435\u0440\u0443";
+					}
+					if (
+						Math.abs(zoomState.scale - zoomState.coverScale) < 0.015
+					) {
+						return `\u0417\u0430\u043f\u043e\u043b\u043d\u0435\u043d\u0438\u0435 \u00b7 ${zoomState.scale.toFixed(2)}\u00d7`;
+					}
+					return `\u041c\u0430\u0441\u0448\u0442\u0430\u0431 \u00b7 ${zoomState.scale.toFixed(2)}\u00d7`;
+				};
+				const showPlayerFeedback = (message) => {
+					zoomFeedback.textContent = message;
+					zoomFeedback.classList.add("visible");
+					clearTimeout(zoomState.feedbackTimer);
+					zoomState.feedbackTimer = setTimeout(() => {
+						zoomFeedback.classList.remove("visible");
+					}, 900);
+				};
+				const showZoomFeedback = () =>
+					showPlayerFeedback(getZoomLabel());
+				const normalizeVideoScale = (nextScale) => {
+					zoomState.coverScale = calculateCoverScale();
+					const maxScale = Math.max(3, zoomState.coverScale * 2);
+					let scale = Math.min(maxScale, Math.max(1, nextScale));
+					if (Math.abs(scale - 1) < 0.04) scale = 1;
+					if (Math.abs(scale - zoomState.coverScale) < 0.06) {
+						scale = zoomState.coverScale;
+					}
+					return scale;
+				};
+				const setVideoZoom = (
+					nextScale,
+					showFeedback = true,
+					force = false,
+					nextPan = null,
+				) => {
+					if (!force && !isZoomAllowed()) return;
+					const scale = normalizeVideoScale(nextScale);
+					zoomState.scale = scale;
+					zoomState.mode =
+						scale <= 1.01
+							? "fit"
+							: Math.abs(scale - zoomState.coverScale) < 0.015
+								? "cover"
+								: "manual";
+					container.style.setProperty(
+						"--video-zoom",
+						scale.toFixed(4),
+					);
+					if (scale <= 1.01) {
+						setVideoPan(0, 0, scale);
+					} else if (nextPan) {
+						setVideoPan(nextPan.x, nextPan.y, scale);
+					} else {
+						setVideoPan(zoomState.panX, zoomState.panY, scale);
+					}
+					if (showFeedback) showZoomFeedback();
+				};
+				const adjustVideoZoom = (direction) => {
+					if (!isZoomAllowed()) return;
+					zoomState.coverScale = calculateCoverScale();
+					if (direction > 0 && zoomState.scale <= 1.01) {
+						setVideoZoom(
+							zoomState.coverScale > 1.01
+								? zoomState.coverScale
+								: 1.1,
+						);
+						return;
+					}
+					if (
+						direction < 0 &&
+						zoomState.scale > zoomState.coverScale &&
+						zoomState.scale - 0.1 <= zoomState.coverScale + 0.06
+					) {
+						setVideoZoom(zoomState.coverScale);
+						return;
+					}
+					if (
+						direction < 0 &&
+						Math.abs(zoomState.scale - zoomState.coverScale) < 0.015
+					) {
+						setVideoZoom(1);
+						return;
+					}
+					setVideoZoom(zoomState.scale + direction * 0.1);
+				};
+				const syncFullscreenZoom = () => {
+					const fullscreen = isPlayerFullscreen();
+					closeMobileContextMenu();
+					zoomState.coverScale = calculateCoverScale();
+					if (!fullscreen && !isTouchZoomDevice) {
+						setVideoZoom(1, false, true);
+						zoomFeedback.classList.remove("visible");
+					}
+				};
+				const syncZoomAfterResize = () => {
+					if (!isZoomAllowed()) return;
+					const wasCover = zoomState.mode === "cover";
+					zoomState.coverScale = calculateCoverScale();
+					if (wasCover) {
+						setVideoZoom(zoomState.coverScale, false);
+					} else {
+						setVideoPan(zoomState.panX, zoomState.panY);
+					}
+				};
+				document.addEventListener("fullscreenchange", syncFullscreenZoom);
+				document.addEventListener(
+					"webkitfullscreenchange",
+					syncFullscreenZoom,
+				);
+				window.addEventListener("resize", syncZoomAfterResize);
+				video.addEventListener("loadedmetadata", syncZoomAfterResize);
+				container.addEventListener(
+					"wheel",
+					(event) => {
+						if (!isPlayerFullscreen()) return;
+						event.preventDefault();
+						adjustVideoZoom(event.deltaY < 0 ? 1 : -1);
+					},
+					{ passive: false },
+				);
+				const getTouchDistance = (touches) =>
+					Math.hypot(
+						touches[0].clientX - touches[1].clientX,
+						touches[0].clientY - touches[1].clientY,
+					);
+				const isTouchOnControls = (target) =>
+					target instanceof Element &&
+					Boolean(
+						target.closest(
+							"button, input, select, #mobile-context-menu, .shaka-controls-button-panel, .shaka-seek-bar-container, .shaka-overflow-menu, .shaka-settings-menu",
+						),
+					);
+				const toggleTouchControls = () => {
+					const uiIsForcedHidden = container.classList.contains(
+						"touch-controls-hidden",
+					);
+					const uiIsVisible =
+						!uiIsForcedHidden &&
+						(typeof controls.isOpaque === "function"
+							? controls.isOpaque()
+							: container
+									.querySelector(".shaka-controls-container")
+									?.getAttribute("shown") === "true");
+					if (uiIsVisible) {
+						clearTimeout(zoomState.controlsAnimationTimer);
+						container.classList.add("touch-controls-hidden");
+						zoomState.controlsAnimationTimer = setTimeout(() => {
+							controls.hideUI?.();
+						}, 200);
+					} else {
+						clearTimeout(zoomState.controlsAnimationTimer);
+						controls.showUI?.();
+						requestAnimationFrame(() => {
+							container.classList.remove(
+								"touch-controls-hidden",
+							);
+						});
+					}
+				};
+				const clearLongPress = () => {
+					clearTimeout(zoomState.longPressTimer);
+					zoomState.longPressTimer = null;
+				};
+				const closeMobileContextMenu = () => {
+					mobileContextMenu.classList.remove("visible");
+				};
+				const updateMobileContextMenu = () => {
+					mobileContextLoop.classList.toggle("active", video.loop);
+					mobileContextLoop.textContent = video.loop
+						? "\u2713 \u041f\u043e\u0432\u0442\u043e\u0440"
+						: "\u041f\u043e\u0432\u0442\u043e\u0440";
+					mobileContextPip.disabled = !(
+						document.pictureInPictureEnabled &&
+						typeof video.requestPictureInPicture === "function"
+					);
+				};
+				const openMobileContextMenu = (point) => {
+					updateMobileContextMenu();
+					mobileContextMenu.classList.add("visible");
+					const bounds = container.getBoundingClientRect();
+					requestAnimationFrame(() => {
+						const margin = 12;
+						const left = Math.min(
+							bounds.width -
+								mobileContextMenu.offsetWidth -
+								margin,
+							Math.max(
+								margin,
+								point.x - bounds.left,
+							),
+						);
+						const top = Math.min(
+							bounds.height -
+								mobileContextMenu.offsetHeight -
+								margin,
+							Math.max(
+								margin,
+								point.y - bounds.top,
+							),
+						);
+						mobileContextMenu.style.left = `${left}px`;
+						mobileContextMenu.style.top = `${top}px`;
+					});
+				};
+				const saveCurrentVideoFrame = () => {
+					if (!video.videoWidth || !video.videoHeight) {
+						showPlayerFeedback(
+							"\u041a\u0430\u0434\u0440 \u0435\u0449\u0435 \u043d\u0435 \u0437\u0430\u0433\u0440\u0443\u0436\u0435\u043d",
+						);
+						return;
+					}
+					try {
+						const canvas = document.createElement("canvas");
+						canvas.width = video.videoWidth;
+						canvas.height = video.videoHeight;
+						canvas
+							.getContext("2d")
+							.drawImage(video, 0, 0, canvas.width, canvas.height);
+						canvas.toBlob((blob) => {
+							if (!blob) {
+								showPlayerFeedback(
+									"\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0441\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c \u043a\u0430\u0434\u0440",
+								);
+								return;
+							}
+							const url = URL.createObjectURL(blob);
+							const link = document.createElement("a");
+							link.href = url;
+							link.download = `dcote-frame-${Math.floor(
+								video.currentTime * 1000,
+							)}.png`;
+							document.body.appendChild(link);
+							link.click();
+							link.remove();
+							setTimeout(() => URL.revokeObjectURL(url), 1000);
+							showPlayerFeedback(
+								"\u041a\u0430\u0434\u0440 \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d",
+							);
+						}, "image/png");
+					} catch (error) {
+						console.error("Unable to save video frame:", error);
+						showPlayerFeedback(
+							"\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0441\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c \u043a\u0430\u0434\u0440",
+						);
+					}
+				};
+				mobileContextLoop.addEventListener("click", (event) => {
+					event.stopPropagation();
+					video.loop = !video.loop;
+					closeMobileContextMenu();
+					showPlayerFeedback(
+						video.loop
+							? "\u041f\u043e\u0432\u0442\u043e\u0440 \u0432\u043a\u043b\u044e\u0447\u0435\u043d"
+							: "\u041f\u043e\u0432\u0442\u043e\u0440 \u0432\u044b\u043a\u043b\u044e\u0447\u0435\u043d",
+					);
+				});
+				mobileContextPip.addEventListener("click", async (event) => {
+					event.stopPropagation();
+					closeMobileContextMenu();
+					try {
+						if (document.pictureInPictureElement) {
+							await document.exitPictureInPicture();
+						} else {
+							await video.requestPictureInPicture();
+						}
+					} catch (error) {
+						console.error("Unable to toggle picture-in-picture:", error);
+						showPlayerFeedback(
+							"\u041a\u0430\u0440\u0442\u0438\u043d\u043a\u0430 \u0432 \u043a\u0430\u0440\u0442\u0438\u043d\u043a\u0435 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430",
+						);
+					}
+				});
+				mobileContextSaveFrame.addEventListener("click", (event) => {
+					event.stopPropagation();
+					closeMobileContextMenu();
+					saveCurrentVideoFrame();
+				});
+				container.addEventListener("contextmenu", (event) => {
+					if (isTouchZoomDevice) event.preventDefault();
+				});
+				container.addEventListener(
+					"touchstart",
+					(event) => {
+						if (!isZoomAllowed()) {
+							return;
+						}
+						clearLongPress();
+						zoomState.longPressTriggered = false;
+						const closedContextMenu =
+							mobileContextMenu.classList.contains("visible") &&
+							!(
+								event.target instanceof Element &&
+								event.target.closest("#mobile-context-menu")
+							);
+						if (closedContextMenu) {
+							closeMobileContextMenu();
+						}
+						const touchStartedOnControls = isTouchOnControls(
+							event.target,
+						);
+						const shouldCaptureTouch =
+							event.touches.length > 1 ||
+							!touchStartedOnControls;
+						if (shouldCaptureTouch) {
+							event.preventDefault();
+							event.stopPropagation();
+							event.stopImmediatePropagation();
+							zoomState.touchGestureCaptured = true;
+						}
+						if (event.touches.length === 1) {
+							zoomState.tapStartPoint = {
+								x: event.touches[0].clientX,
+								y: event.touches[0].clientY,
+							};
+							zoomState.tapStartTime = performance.now();
+							zoomState.tapMoved = false;
+							zoomState.tapStartedOnControls =
+								touchStartedOnControls || closedContextMenu;
+							if (
+								!touchStartedOnControls &&
+								!closedContextMenu
+							) {
+								const longPressPoint = {
+									x: event.touches[0].clientX,
+									y: event.touches[0].clientY,
+								};
+								zoomState.longPressTimer = setTimeout(() => {
+									if (
+										zoomState.tapStartPoint &&
+										!zoomState.tapMoved &&
+										!zoomState.pinchStartDistance
+									) {
+										zoomState.longPressTriggered = true;
+										zoomState.tapMoved = true;
+										navigator.vibrate?.(20);
+										openMobileContextMenu(longPressPoint);
+									}
+								}, 600);
+							}
+						} else {
+							zoomState.tapStartPoint = null;
+							clearLongPress();
+						}
+						if (
+							event.touches.length === 1 &&
+							zoomState.scale > 1.01 &&
+							!isTouchOnControls(event.target)
+						) {
+							event.preventDefault();
+							container.classList.add("video-zoom-gesturing");
+							zoomState.panStartPoint = {
+								x: event.touches[0].clientX,
+								y: event.touches[0].clientY,
+							};
+							zoomState.panStartX = zoomState.panX;
+							zoomState.panStartY = zoomState.panY;
+							return;
+						}
+						if (event.touches.length !== 2) return;
+						event.preventDefault();
+						container.classList.add("video-zoom-gesturing");
+						zoomState.panStartPoint = null;
+						zoomState.pinchStartDistance = getTouchDistance(
+							event.touches,
+						);
+						zoomState.pinchStartScale = zoomState.scale;
+						zoomState.pinchStartCenter = getContainerCenterOffset(
+							getTouchCenter(event.touches),
+						);
+						zoomState.pinchStartPanX = zoomState.panX;
+						zoomState.pinchStartPanY = zoomState.panY;
+					},
+					{ passive: false, capture: true },
+				);
+				container.addEventListener(
+					"touchmove",
+					(event) => {
+						if (
+							zoomState.tapStartPoint &&
+							event.touches.length > 0
+						) {
+							const tapDistance = Math.hypot(
+								event.touches[0].clientX -
+									zoomState.tapStartPoint.x,
+								event.touches[0].clientY -
+									zoomState.tapStartPoint.y,
+							);
+							if (tapDistance > 8) {
+								zoomState.tapMoved = true;
+								clearLongPress();
+							}
+						}
+						if (
+							zoomState.panStartPoint &&
+							event.touches.length === 1
+						) {
+							event.preventDefault();
+							const distance = Math.hypot(
+								event.touches[0].clientX -
+									zoomState.panStartPoint.x,
+								event.touches[0].clientY -
+									zoomState.panStartPoint.y,
+							);
+							if (distance > 8) zoomState.tapMoved = true;
+							setVideoPan(
+								zoomState.panStartX +
+									event.touches[0].clientX -
+									zoomState.panStartPoint.x,
+								zoomState.panStartY +
+									event.touches[0].clientY -
+									zoomState.panStartPoint.y,
+							);
+							return;
+						}
+						if (
+							!zoomState.pinchStartDistance ||
+							event.touches.length !== 2
+						) {
+							return;
+						}
+						event.preventDefault();
+						zoomState.tapMoved = true;
+						clearLongPress();
+						const distance = getTouchDistance(event.touches);
+						const nextScale = normalizeVideoScale(
+							zoomState.pinchStartScale *
+								(distance / zoomState.pinchStartDistance),
+						);
+						const scaleRatio =
+							nextScale / zoomState.pinchStartScale;
+						const currentCenter = getContainerCenterOffset(
+							getTouchCenter(event.touches),
+						);
+						setVideoZoom(
+							nextScale,
+							false,
+							false,
+							{
+								x:
+									currentCenter.x -
+									(zoomState.pinchStartCenter.x -
+										zoomState.pinchStartPanX) *
+										scaleRatio,
+								y:
+									currentCenter.y -
+									(zoomState.pinchStartCenter.y -
+										zoomState.pinchStartPanY) *
+										scaleRatio,
+							},
+						);
+					},
+					{ passive: false, capture: true },
+				);
+				const finishTouchZoom = (event) => {
+					clearLongPress();
+					if (
+						event.touches.length === 1 &&
+						zoomState.pinchStartDistance
+					) {
+						event.preventDefault();
+						event.stopPropagation();
+						event.stopImmediatePropagation();
+						zoomState.pinchStartDistance = null;
+						zoomState.pinchStartCenter = null;
+						zoomState.panStartPoint = {
+							x: event.touches[0].clientX,
+							y: event.touches[0].clientY,
+						};
+						zoomState.panStartX = zoomState.panX;
+						zoomState.panStartY = zoomState.panY;
+						setVideoZoom(zoomState.scale);
+						return;
+					}
+					if (event.touches.length > 0) return;
+					const wasPinching = Boolean(zoomState.pinchStartDistance);
+					const wasTap =
+						event.type === "touchend" &&
+						zoomState.tapStartPoint &&
+						!zoomState.tapMoved &&
+						!zoomState.longPressTriggered &&
+						!zoomState.tapStartedOnControls &&
+						performance.now() - zoomState.tapStartTime < 350;
+					zoomState.pinchStartDistance = null;
+					zoomState.pinchStartCenter = null;
+					zoomState.panStartPoint = null;
+					zoomState.tapStartPoint = null;
+					zoomState.longPressTriggered = false;
+					container.classList.remove("video-zoom-gesturing");
+					if (wasPinching) setVideoZoom(zoomState.scale);
+					if (zoomState.touchGestureCaptured) {
+						event.preventDefault();
+						event.stopPropagation();
+						event.stopImmediatePropagation();
+						zoomState.touchGestureCaptured = false;
+					}
+					if (wasTap) {
+						toggleTouchControls();
+					}
+				};
+				container.addEventListener("touchend", finishTouchZoom, true);
+				container.addEventListener("touchcancel", finishTouchZoom, true);
+
 				const localization = controls.getLocalization();
 				const RU = "ru";
 				localization.insert(
@@ -1057,6 +1826,27 @@
 							break;
 						case "KeyM":
 							video.muted = !video.muted;
+							break;
+						case "Equal":
+						case "NumpadAdd":
+							if (isPlayerFullscreen()) {
+								e.preventDefault();
+								adjustVideoZoom(1);
+							}
+							break;
+						case "Minus":
+						case "NumpadSubtract":
+							if (isPlayerFullscreen()) {
+								e.preventDefault();
+								adjustVideoZoom(-1);
+							}
+							break;
+						case "Digit0":
+						case "Numpad0":
+							if (isPlayerFullscreen()) {
+								e.preventDefault();
+								setVideoZoom(1);
+							}
 							break;
 						case "KeyF":
 							controls.toggleFullScreen();
