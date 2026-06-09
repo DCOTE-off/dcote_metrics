@@ -422,6 +422,12 @@
 		</div>
 		<script>
 			const playerParams = new URLSearchParams(location.search);
+			const requestedVttBottomLine = Number(
+				playerParams.get("vtt_bottom_line") || "88",
+			);
+			const defaultVttBottomLine = Number.isFinite(requestedVttBottomLine)
+				? Math.min(100, Math.max(0, requestedVttBottomLine))
+				: 88;
 			const localHostnamePattern =
 				/^(localhost|127\.0\.0\.1|::1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)$/;
 			const stage =
@@ -491,6 +497,39 @@
 				thresholdSeconds: 30,
 				timerId: null,
 			};
+			function positionUnpositionedVttCues(cues) {
+				for (const cue of cues) {
+					const hasRegion = Boolean(cue.region?.id);
+					if (cue.line != null || hasRegion) continue;
+
+					cue.line = defaultVttBottomLine;
+					cue.lineInterpretation =
+						shaka.text.Cue.lineInterpretation.PERCENTAGE;
+					cue.lineAlign = shaka.text.Cue.lineAlign.START;
+				}
+				return cues;
+			}
+			function createPositionedTextDisplayer(player) {
+				const video = player.getMediaElement();
+				const prefersUiTextDisplayer =
+					player.getVideoContainer() &&
+					!video?.webkitDisplayingFullscreen &&
+					(!video?.webkitPresentationMode ||
+						video.webkitPresentationMode === "inline");
+				let displayer;
+				if (prefersUiTextDisplayer) {
+					displayer = new shaka.text.UITextDisplayer(player);
+				} else if ("track" in document.createElement("track")) {
+					displayer = new shaka.text.NativeTextDisplayer(player);
+				} else {
+					displayer = new shaka.text.StubTextDisplayer();
+				}
+				const append = displayer.append.bind(displayer);
+				displayer.append = (cues) => {
+					append(positionUnpositionedVttCues(cues));
+				};
+				return displayer;
+			}
 			function getActiveTextTrack(player) {
 				if (!player || typeof player.getTextTracks !== "function") {
 					return null;
@@ -1085,6 +1124,8 @@
 					"(max-width: 900px), (pointer: coarse) and (max-height: 500px)",
 				).matches;
 				player.configure({
+					textDisplayFactory: () =>
+						createPositionedTextDisplayer(player),
 					abr: {
 						restrictions: {
 							maxHeight: usesMobileLayout ? 720 : 1080,
