@@ -74,16 +74,20 @@
 			}
 
 			#video,
-			#poster-cover,
-			#player-container .JASSUB {
+			#poster-cover {
+				transform-origin: center;
+				transition: transform 0.18s ease-out;
+			}
+
+			#player-container.video-zoom-active #video,
+			#player-container.video-zoom-active #poster-cover,
+			#player-container.video-zoom-active .JASSUB {
 				transform: translate3d(
 						var(--video-pan-x),
 						var(--video-pan-y),
 						0
 					)
 					scale(var(--video-zoom));
-				transform-origin: center;
-				transition: transform 0.18s ease-out;
 			}
 
 			#player-container.video-zoom-gesturing #video,
@@ -199,7 +203,9 @@
 			}
 
 			#player-container .JASSUB {
+				background: transparent !important;
 				pointer-events: none;
+				transform-origin: center;
 				visibility: hidden;
 			}
 
@@ -438,6 +444,7 @@
 					? location.origin
 					: "https://video.dcote.net/metrics-api";
 			const playerAssetBase = backendUrl;
+			const jassubAssetVersion = "canvas2d-1";
 			const websocketUrl =
 				stage == "dev"
 					? `${location.protocol === "https:" ? "wss" : "ws"}://${
@@ -512,7 +519,7 @@
 			function createPositionedTextDisplayer(player) {
 				const video = player.getMediaElement();
 				const prefersUiTextDisplayer =
-					player.getVideoContainer() &&
+					video &&
 					!video?.webkitDisplayingFullscreen &&
 					(!video?.webkitPresentationMode ||
 						video.webkitPresentationMode === "inline");
@@ -746,17 +753,19 @@
 						bottomMarginPercent,
 					);
 					const { default: JASSUB } = await import(
-						`${playerAssetBase}/vendor/jassub/jassub.js`
+						`${playerAssetBase}/vendor/jassub/jassub.js?v=${jassubAssetVersion}`
 					);
 					const subtitleFontUrl =
 						`${playerAssetBase}/fonts/vag-rounded-next-bold.woff2`;
 					const renderer = new JASSUB({
 						video,
 						subContent,
-						workerUrl: `${playerAssetBase}/vendor/jassub/jassub-worker.js`,
-						wasmUrl: `${playerAssetBase}/vendor/jassub/jassub-worker.wasm`,
+						workerUrl:
+							`${playerAssetBase}/vendor/jassub/jassub-worker.js?v=${jassubAssetVersion}`,
+						wasmUrl:
+							`${playerAssetBase}/vendor/jassub/jassub-worker.wasm?v=${jassubAssetVersion}`,
 						modernWasmUrl:
-							`${playerAssetBase}/vendor/jassub/jassub-worker-modern.wasm`,
+							`${playerAssetBase}/vendor/jassub/jassub-worker-modern.wasm?v=${jassubAssetVersion}`,
 						availableFonts: {
 							"vag rounded next": subtitleFontUrl,
 							tahoma: subtitleFontUrl,
@@ -1307,6 +1316,13 @@
 						),
 					};
 				};
+				const syncVideoZoomClass = () => {
+					const isZoomed =
+						zoomState.scale > 1.01 ||
+						Math.abs(zoomState.panX) > 0.01 ||
+						Math.abs(zoomState.panY) > 0.01;
+					container.classList.toggle("video-zoom-active", isZoomed);
+				};
 				const setVideoPan = (nextX, nextY, scale = zoomState.scale) => {
 					const limits = getPanLimits(scale);
 					zoomState.panX = Math.min(
@@ -1325,6 +1341,7 @@
 						"--video-pan-y",
 						`${zoomState.panY.toFixed(2)}px`,
 					);
+					syncVideoZoomClass();
 				};
 				const getZoomLabel = () => {
 					if (zoomState.scale <= 1.01) {

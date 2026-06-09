@@ -1,10 +1,41 @@
-import { copyFile, mkdir } from "fs/promises";
+import { copyFile, mkdir, readFile } from "fs/promises";
 import { join, resolve } from "path";
 import { build } from "esbuild";
 
 const projectRoot = resolve(import.meta.dirname, "..");
 const jassubRoot = join(projectRoot, "node_modules", "jassub");
 const outputDir = join(projectRoot, "public", "vendor", "jassub");
+
+const forceCanvas2DRendererPlugin = {
+	name: "force-jassub-canvas-2d-renderer",
+	setup(buildContext) {
+		buildContext.onLoad(
+			{ filter: /[\\/]jassub[\\/]dist[\\/]worker[\\/]worker\.js$/ },
+			async ({ path }) => {
+				const source = await readFile(path, "utf8");
+				const rendererSelection =
+					/^        try \{[\s\S]*?^        \}\r?\n        this\._gpurender\.setCanvas\(ctrl\);/m;
+
+				if (!rendererSelection.test(source)) {
+					throw new Error("Unable to locate the JASSUB renderer selection.");
+				}
+
+				return {
+					contents: source.replace(
+						rendererSelection,
+						[
+							"        // Transparent WebGL canvases can cover hardware video with black",
+							"        // frames in Chromium. Canvas2D is slower but composites reliably.",
+							"        this._gpurender = new Canvas2DRenderer();",
+							"        this._gpurender.setCanvas(ctrl);",
+						].join("\n"),
+					),
+					loader: "js",
+				};
+			},
+		);
+	},
+};
 
 await mkdir(outputDir, { recursive: true });
 
@@ -26,6 +57,7 @@ await Promise.all([
 		platform: "browser",
 		target: "es2022",
 		legalComments: "eof",
+		plugins: [forceCanvas2DRendererPlugin],
 	}),
 ]);
 

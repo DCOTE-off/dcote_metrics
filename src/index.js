@@ -60,6 +60,7 @@ function getTestAssetType(filePath) {
 }
 
 fastify.get("/videoplayer", async (req, reply) => {
+	reply.header("Cache-Control", "no-store");
 	reply.type("text/html").send(videoPlayerFile);
 });
 
@@ -77,7 +78,7 @@ async function sendJassubVendorAsset(req, reply) {
 		return reply.code(404).send({ error: "Not found" });
 	}
 
-	reply.header("Cache-Control", "public, max-age=31536000, immutable");
+	reply.header("Cache-Control", "public, max-age=0, must-revalidate");
 	reply.type(contentType);
 	return reply.send(createReadStream(join(jassubVendorRootPath, assetName)));
 }
