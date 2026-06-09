@@ -497,13 +497,27 @@
 				}
 				return player.getTextTracks().find((track) => track.active) || null;
 			}
+			function isAssTextTrackSelected(player) {
+				const activeTrack = getActiveTextTrack(player);
+				if (!activeTrack) return false;
+
+				const activeLanguage = (activeTrack.language || "")
+					.split("-")[0]
+					.toLowerCase();
+				return (
+					!assSubtitles.language ||
+					!activeLanguage ||
+					activeLanguage === "und" ||
+					activeLanguage === assSubtitles.language
+				);
+			}
 			function syncAssSubtitleVisibility(player) {
 				const container = document.getElementById("player-container");
 				const canvas = assSubtitles.renderer?._canvas;
 				const shouldShow =
 					assSubtitles.ready &&
 					canvas &&
-					player.isTextTrackVisible();
+					isAssTextTrackSelected(player);
 
 				if (canvas) {
 					canvas.style.visibility = shouldShow ? "visible" : "hidden";
@@ -536,7 +550,7 @@
 				label.textContent = [
 					`renderer=${document.getElementById("player-container").dataset.subtitleRenderer || "vtt"}`,
 					`ass=${assSubtitles.status}`,
-					`captions=${player.isTextTrackVisible() ? "on" : "off"}`,
+					`captions=${getActiveTextTrack(player) ? "on" : "off"}`,
 					`margin=${assSubtitles.bottomMargin ?? "-"}`,
 					assSubtitles.error ? `error=${assSubtitles.error}` : "",
 				]
@@ -854,6 +868,10 @@
 				scheduleViewStartedMetricCheck();
 			}
 			function areSubtitlesVisible(player, video) {
+				if (getActiveTextTrack(player)) {
+					return true;
+				}
+
 				if (
 					player &&
 					typeof player.isTextTrackVisible === "function" &&
@@ -1093,7 +1111,7 @@
 					.split("-")[0]
 					.toLowerCase();
 				const assBottomMarginPercent = parseFloat(
-					params.get("ass_bottom_margin_percent") || "12",
+					params.get("ass_bottom_margin_percent") || "7",
 				);
 
 				const poster = params.get("poster");
@@ -1947,20 +1965,20 @@
 				}
 
 				if (src) {
+					if (assUrl) {
+						initAssSubtitles(
+							player,
+							video,
+							assUrl,
+							assBottomMarginPercent,
+						);
+					}
 					try {
 						await player.load(src);
 						showPoster();
 						initMetricDatas(src);
 						initAudioMetricTracking(player);
 						initSubtitleMetricTracking(player, video);
-						if (assUrl) {
-							initAssSubtitles(
-								player,
-								video,
-								assUrl,
-								assBottomMarginPercent,
-							);
-						}
 					} catch (e) {
 						onError(e);
 					}
