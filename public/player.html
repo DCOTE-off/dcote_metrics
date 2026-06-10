@@ -166,10 +166,9 @@
 				font-family: "VAG Rounded Next", Arial, sans-serif !important;
 				font-weight: 700 !important;
 				color: #fff !important;
-				font-size: clamp(16px, 4.8vw, 54px) !important;
-				font-size: clamp(16px, min(4.8vw, 8.5vh), 54px) !important;
-				line-height: 0.82 !important;
-				line-height: min(0.95em, 52px) !important;
+				font-size: clamp(14px, 3.2vw, 40px) !important;
+				font-size: clamp(14px, min(3.2vw, 5.8vh), 40px) !important;
+				line-height: 1.05 !important;
 				letter-spacing: 0 !important;
 				white-space: pre-wrap !important;
 				text-shadow:
@@ -278,10 +277,9 @@
 				font-weight: 700;
 				color: #fff;
 				-webkit-text-fill-color: #fff;
-				font-size: clamp(16px, 4.8vw, 54px);
-				font-size: clamp(16px, min(4.8vw, 8.5vh), 54px);
-				line-height: 0.82;
-				line-height: min(0.95em, 52px);
+				font-size: clamp(14px, 3.2vw, 40px);
+				font-size: clamp(14px, min(3.2vw, 5.8vh), 40px);
+				line-height: 1.05;
 				text-shadow:
 					0 0.075em 0 #000,
 					0 -0.075em 0 #000,
@@ -339,22 +337,18 @@
 				box-shadow: none !important;
 			}
 
-			@media (max-width: 900px), (pointer: coarse) and (max-height: 500px) {
+			@media (max-width: 1100px), (max-height: 720px) {
 				.shaka-text-container [translate="no"],
 				.shaka-text-container .shaka-text-wrapper {
-					font-size: clamp(14px, 4.2vw, 24px) !important;
-					font-size: clamp(14px, min(4.2vw, 6vh), 24px) !important;
-					line-height: 0.95 !important;
-					line-height: min(0.95em, 23px) !important;
+					font-size: clamp(14px, 3.2vw, 28px) !important;
+					font-size: clamp(14px, min(3.2vw, 5vh), 28px) !important;
 				}
 
 				video::cue {
 					background: transparent;
 					background-color: transparent;
-					font-size: clamp(14px, 4.2vw, 24px);
-					font-size: clamp(14px, min(4.2vw, 6vh), 24px);
-					line-height: 0.95;
-					line-height: min(0.95em, 23px);
+					font-size: clamp(14px, 3.2vw, 28px);
+					font-size: clamp(14px, min(3.2vw, 5vh), 28px);
 				}
 			}
 
@@ -497,6 +491,10 @@
 				status: "idle",
 				error: null,
 				bottomMargin: null,
+				baseStyles: null,
+				resizeObserver: null,
+				resizeTimerId: null,
+				renderedFontLimit: null,
 			};
 			const subtitleMetric = {
 				activeSeconds: 0,
@@ -513,7 +511,7 @@
 					cue.line = defaultVttBottomLine;
 					cue.lineInterpretation =
 						shaka.text.Cue.lineInterpretation.PERCENTAGE;
-					cue.lineAlign = shaka.text.Cue.lineAlign.START;
+					cue.lineAlign = shaka.text.Cue.lineAlign.END;
 				}
 				return cues;
 			}
@@ -599,6 +597,7 @@
 					`ass=${assSubtitles.status}`,
 					`captions=${getActiveTextTrack(player) ? "on" : "off"}`,
 					`margin=${assSubtitles.bottomMargin ?? "-"}`,
+					`fontLimit=${assSubtitles.renderedFontLimit ?? "-"}`,
 					assSubtitles.error ? `error=${assSubtitles.error}` : "",
 				]
 					.filter(Boolean)
@@ -661,6 +660,13 @@
 					})
 					.join("\n");
 			}
+			function scaleInlineAssFontSizes(subContent, scale) {
+				return subContent.replace(
+					/\\fs(\d+(?:\.\d+)?)/gi,
+					(match, fontSize) =>
+						`\\fs${(Number(fontSize) * scale).toFixed(2)}`,
+				);
+			}
 			async function applyBottomAssStyleMargin(
 				renderer,
 				subContent,
@@ -687,22 +693,77 @@
 
 				assSubtitles.bottomMargin = minimumMargin;
 			}
-			async function pinBottomAssEvents(
+			async function applyResponsiveAssStyles(renderer, subContent, video) {
+				const playResYLine = subContent
+					.split(/\r?\n/)
+					.find((line) => /^PlayResY\s*:/i.test(line));
+				const playResY = Number(playResYLine?.split(":")[1]) || 360;
+				const displayHeight =
+					renderer._canvas?.getBoundingClientRect().height ||
+					video.getBoundingClientRect().height;
+				if (!displayHeight) return;
+
+				if (!assSubtitles.baseStyles) {
+					assSubtitles.baseStyles = (await renderer.renderer.getStyles()).map(
+						(style) => ({ ...style }),
+					);
+				}
+
+				const renderedFontLimit = Math.min(
+					40,
+					Math.max(18, displayHeight * 0.055),
+				);
+				const renderScale = displayHeight / playResY;
+
+				for (
+					let index = 0;
+					index < assSubtitles.baseStyles.length;
+					index += 1
+				) {
+					const style = assSubtitles.baseStyles[index];
+					const renderedFontSize = style.FontSize * renderScale;
+					const scale = Math.min(
+						0.88,
+						renderedFontSize > 0
+							? renderedFontLimit / renderedFontSize
+							: 0.88,
+					);
+					await renderer.renderer.setStyle(
+						{
+							...style,
+							FontSize: style.FontSize * scale,
+							Outline: style.Outline * scale,
+							Shadow: style.Shadow * scale,
+						},
+						index,
+					);
+				}
+
+				assSubtitles.renderedFontLimit = Math.round(renderedFontLimit);
+				await renderer.resize(true);
+			}
+			function scheduleResponsiveAssStyles(renderer, subContent, video) {
+				clearTimeout(assSubtitles.resizeTimerId);
+				assSubtitles.resizeTimerId = setTimeout(() => {
+					applyResponsiveAssStyles(renderer, subContent, video)
+						.then(() => updateSubtitleDebugLabel(metricPlayer))
+						.catch((error) => {
+							console.warn("Unable to resize ASS subtitles.", error);
+						});
+				}, 120);
+			}
+			async function raiseBottomAssEventMargins(
 				renderer,
 				subContent,
 				bottomMarginPercent,
 			) {
 				const lines = subContent.split(/\r?\n/);
-				const playResXLine = lines.find((line) =>
-					/^PlayResX\s*:/i.test(line),
-				);
 				const playResYLine = lines.find((line) =>
 					/^PlayResY\s*:/i.test(line),
 				);
-				const playResX = Number(playResXLine?.split(":")[1]) || 640;
 				const playResY = Number(playResYLine?.split(":")[1]) || 360;
-				const y = Math.round(
-					playResY * (1 - bottomMarginPercent / 100),
+				const minimumMargin = Math.round(
+					(playResY * bottomMarginPercent) / 100,
 				);
 				const styles = await renderer.renderer.getStyles();
 				const events = await renderer.renderer.getEvents();
@@ -718,17 +779,9 @@
 					const alignment = Number(inlineAlignment?.[1]) || style.Alignment;
 					if (alignment < 1 || alignment > 3) continue;
 
-					const marginL = event.MarginL || style.MarginL;
-					const marginR = event.MarginR || style.MarginR;
-					const x =
-						alignment === 1
-							? marginL
-							: alignment === 3
-								? playResX - marginR
-								: Math.round(playResX / 2);
-					const positionOverride = `{\\an${alignment}\\pos(${x},${y})}`;
+					if (event.MarginV >= minimumMargin) continue;
 					await renderer.renderer.setEvent(
-						{ ...event, Text: positionOverride + event.Text },
+						{ ...event, MarginV: minimumMargin },
 						index,
 					);
 				}
@@ -749,9 +802,12 @@
 							`ASS request failed with status ${subtitleResponse.status}`,
 						);
 					}
-					const subContent = raiseBottomAssStyles(
-						await subtitleResponse.text(),
-						bottomMarginPercent,
+					const subContent = scaleInlineAssFontSizes(
+						raiseBottomAssStyles(
+							await subtitleResponse.text(),
+							bottomMarginPercent,
+						),
+						0.88,
 					);
 					const { default: JASSUB } = await import(
 						`${playerAssetBase}/vendor/jassub/jassub.js?v=${jassubAssetVersion}`
@@ -785,11 +841,16 @@
 						subContent,
 						bottomMarginPercent,
 					);
-					await pinBottomAssEvents(
+					await applyResponsiveAssStyles(renderer, subContent, video);
+					await raiseBottomAssEventMargins(
 						renderer,
 						subContent,
 						bottomMarginPercent,
 					);
+					assSubtitles.resizeObserver = new ResizeObserver(() => {
+						scheduleResponsiveAssStyles(renderer, subContent, video);
+					});
+					assSubtitles.resizeObserver.observe(video);
 					assSubtitles.ready = true;
 					assSubtitles.status = "ready";
 					syncAssSubtitleVisibility(player);
@@ -814,6 +875,10 @@
 					assSubtitles.error = String(error?.message || error).slice(0, 120);
 					const renderer = assSubtitles.renderer;
 					assSubtitles.renderer = null;
+					assSubtitles.resizeObserver?.disconnect();
+					assSubtitles.resizeObserver = null;
+					clearTimeout(assSubtitles.resizeTimerId);
+					assSubtitles.resizeTimerId = null;
 					if (renderer) {
 						await renderer.destroy().catch(() => {});
 					}
@@ -1134,8 +1199,8 @@
 					"(max-width: 900px), (pointer: coarse) and (max-height: 500px)",
 				).matches;
 				player.configure({
-					textDisplayFactory: () =>
-						createPositionedTextDisplayer(player),
+					textDisplayFactory: (textPlayer) =>
+						createPositionedTextDisplayer(textPlayer),
 					abr: {
 						restrictions: {
 							maxHeight: usesMobileLayout ? 720 : 1080,
@@ -2044,6 +2109,8 @@
 				}
 			}
 			window.addEventListener("pagehide", () => {
+				assSubtitles.resizeObserver?.disconnect();
+				clearTimeout(assSubtitles.resizeTimerId);
 				assSubtitles.renderer?.destroy().catch(() => {});
 			});
 			document.addEventListener("DOMContentLoaded", init);
