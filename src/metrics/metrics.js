@@ -68,6 +68,12 @@ const activeSiteUsersGlobal = new client.Gauge({
 	registers: [register],
 });
 
+const siteVisits = new client.Counter({
+	name: "site_visits_total",
+	help: "Website visits counted by browser session",
+	registers: [register],
+});
+
 function initTestSeedDatas() {
 	const datas = [
 		{ country: "KZ", season: 1, episode: 3, voice: "DUB" },
@@ -99,6 +105,7 @@ activeViewers.set(0);
 activeSiteTabsGlobal.set(0);
 activeSiteSessionsGlobal.set(0);
 activeSiteUsersGlobal.set(0);
+siteVisits.inc(0);
 
 export {
 	register,
@@ -112,4 +119,5 @@ export {
 	activeSiteTabsGlobal,
 	activeSiteSessionsGlobal,
 	activeSiteUsersGlobal,
+	siteVisits,
 };

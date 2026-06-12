@@ -631,6 +631,74 @@
 			"title": "Вкладки сайта по страницам",
 			"transparent": true,
 			"type": "bargauge"
+		},
+		{
+			"datasource": {
+				"type": "prometheus"
+			},
+			"fieldConfig": {
+				"defaults": {
+					"color": {
+						"fixedColor": "#B877D9",
+						"mode": "shades"
+					},
+					"noValue": "0",
+					"thresholds": {
+						"mode": "absolute",
+						"steps": [
+							{
+								"color": "green",
+								"value": 0
+							},
+							{
+								"color": "red",
+								"value": 80
+							}
+						]
+					}
+				}
+			},
+			"gridPos": {
+				"h": 6,
+				"w": 24,
+				"x": 0,
+				"y": 26
+			},
+			"id": 9,
+			"options": {
+				"colorMode": "background",
+				"graphMode": "none",
+				"justifyMode": "auto",
+				"orientation": "auto",
+				"percentChangeColorMode": "standard",
+				"reduceOptions": {
+					"calcs": [
+						"lastNotNull"
+					],
+					"fields": "",
+					"values": false
+				},
+				"showPercentChange": false,
+				"textMode": "auto",
+				"wideLayout": true
+			},
+			"pluginVersion": "13.0.1",
+			"targets": [
+				{
+					"datasource": {
+						"type": "prometheus"
+					},
+					"editorMode": "code",
+					"expr": "round(sum(increase(site_visits_total{job=\"backend\"}[$__range]))) or vector(0)",
+					"instant": true,
+					"legendFormat": "__auto",
+					"range": false,
+					"refId": "A"
+				}
+			],
+			"title": "Всего посещений",
+			"transparent": true,
+			"type": "stat"
 		}
 	],
 	"preload": false,

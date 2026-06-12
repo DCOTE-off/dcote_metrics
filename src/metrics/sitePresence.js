@@ -5,12 +5,15 @@ import {
 	activeSiteTabsGlobal,
 	activeSiteSessionsGlobal,
 	activeSiteUsersGlobal,
+	siteVisits,
 } from "./metrics.js";
 
 const SITE_PRESENCE_TTL_MS = 45 * 1000;
 const SITE_PRESENCE_CLEANUP_INTERVAL_MS = 15 * 1000;
+const SITE_VISIT_TTL_MS = 30 * 60 * 1000;
 
 const activeConnections = new Map();
+const recentVisitSessions = new Map();
 const seenPages = new Set();
 let nextConnectionId = 1;
 
@@ -163,6 +166,12 @@ function cleanupStaleSitePresenceConnections() {
 		}
 	}
 
+	for (const [sessionId, lastSeenAt] of recentVisitSessions) {
+		if (now - lastSeenAt > SITE_VISIT_TTL_MS) {
+			recentVisitSessions.delete(sessionId);
+		}
+	}
+
 	if (removed) updateSitePresenceMetrics();
 }
 
@@ -196,6 +205,13 @@ function touchSitePresenceConnection(connectionId, payload = {}) {
 		};
 	}
 
+	const now = Date.now();
+	const previousVisitAt = recentVisitSessions.get(sessionId);
+	if (!previousVisitAt || now - previousVisitAt > SITE_VISIT_TTL_MS) {
+		siteVisits.inc();
+	}
+	recentVisitSessions.set(sessionId, now);
+
 	const duplicateConnection = removeDuplicateTabConnections(
 		connectionId,
 		tabId,
@@ -209,8 +225,8 @@ function touchSitePresenceConnection(connectionId, payload = {}) {
 		startedAt:
 			previous?.startedAt
 			?? duplicateConnection?.startedAt
-			?? Date.now(),
-		updatedAt: Date.now(),
+			?? now,
+		updatedAt: now,
 	});
 
 	updateSitePresenceMetrics();
