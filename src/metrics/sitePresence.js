@@ -6,6 +6,7 @@ import {
 	activeSiteSessionsGlobal,
 	activeSiteUsersGlobal,
 	siteVisits,
+	sitePageVisits,
 } from "./metrics.js";
 
 const SITE_PRESENCE_TTL_MS = 45 * 1000;
@@ -14,6 +15,7 @@ const SITE_VISIT_TTL_MS = 30 * 60 * 1000;
 
 const activeConnections = new Map();
 const recentVisitSessions = new Map();
+const recentPageVisits = new Map();
 const seenPages = new Set();
 let nextConnectionId = 1;
 
@@ -172,6 +174,12 @@ function cleanupStaleSitePresenceConnections() {
 		}
 	}
 
+	for (const [tabId, visit] of recentPageVisits) {
+		if (now - visit.lastSeenAt > SITE_VISIT_TTL_MS) {
+			recentPageVisits.delete(tabId);
+		}
+	}
+
 	if (removed) updateSitePresenceMetrics();
 }
 
@@ -211,6 +219,16 @@ function touchSitePresenceConnection(connectionId, payload = {}) {
 		siteVisits.inc();
 	}
 	recentVisitSessions.set(sessionId, now);
+
+	const previousPageVisit = recentPageVisits.get(tabId);
+	if (
+		!previousPageVisit
+		|| previousPageVisit.page !== page
+		|| now - previousPageVisit.lastSeenAt > SITE_VISIT_TTL_MS
+	) {
+		sitePageVisits.inc({ page });
+	}
+	recentPageVisits.set(tabId, { page, lastSeenAt: now });
 
 	const duplicateConnection = removeDuplicateTabConnections(
 		connectionId,

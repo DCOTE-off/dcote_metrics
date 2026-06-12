@@ -74,6 +74,13 @@ const siteVisits = new client.Counter({
 	registers: [register],
 });
 
+const sitePageVisits = new client.Counter({
+	name: "site_page_visits_total",
+	help: "Website page visits counted by browser tab",
+	labelNames: ["page"],
+	registers: [register],
+});
+
 function initTestSeedDatas() {
 	const datas = [
 		{ country: "KZ", season: 1, episode: 3, voice: "DUB" },
@@ -120,4 +127,5 @@ export {
 	activeSiteSessionsGlobal,
 	activeSiteUsersGlobal,
 	siteVisits,
+	sitePageVisits,
 };
