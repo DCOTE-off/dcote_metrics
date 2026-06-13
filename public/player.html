@@ -198,6 +198,22 @@
 				padding: 0 !important;
 			}
 
+			#player-container:fullscreen
+				.shaka-text-container
+				[translate="no"],
+			#player-container:fullscreen
+				.shaka-text-container
+				.shaka-text-wrapper,
+			#player-container:-webkit-full-screen
+				.shaka-text-container
+				[translate="no"],
+			#player-container:-webkit-full-screen
+				.shaka-text-container
+				.shaka-text-wrapper {
+				font-size: clamp(14px, 3.2vw, 48px) !important;
+				font-size: clamp(14px, min(3.2vw, 5.8vh), 48px) !important;
+			}
+
 			#player-container.ass-subtitles-active .shaka-text-container {
 				visibility: hidden !important;
 			}
@@ -305,6 +321,12 @@
 				background-color: transparent;
 				color: #fff;
 				-webkit-text-fill-color: #fff;
+			}
+
+			#player-container:fullscreen video::cue,
+			#player-container:-webkit-full-screen video::cue {
+				font-size: clamp(14px, 3.2vw, 48px);
+				font-size: clamp(14px, min(3.2vw, 5.8vh), 48px);
 			}
 
 			video::-webkit-media-text-track-container {
@@ -702,6 +724,18 @@
 					renderer._canvas?.getBoundingClientRect().height ||
 					video.getBoundingClientRect().height;
 				if (!displayHeight) return;
+				const fullscreenElement =
+					document.fullscreenElement ||
+					document.webkitFullscreenElement ||
+					null;
+				const fullscreenScale =
+					fullscreenElement &&
+					(fullscreenElement === video ||
+						fullscreenElement.contains(video)) &&
+					window.innerWidth > 1100 &&
+					window.innerHeight > 720
+						? 1.2
+						: 1;
 
 				if (!assSubtitles.baseStyles) {
 					assSubtitles.baseStyles = (await renderer.renderer.getStyles()).map(
@@ -709,10 +743,9 @@
 					);
 				}
 
-				const renderedFontLimit = Math.min(
-					40,
-					Math.max(18, displayHeight * 0.055),
-				);
+				const renderedFontLimit =
+					Math.min(40, Math.max(18, displayHeight * 0.055)) *
+					fullscreenScale;
 				const renderScale = displayHeight / playResY;
 
 				for (
@@ -723,10 +756,10 @@
 					const style = assSubtitles.baseStyles[index];
 					const renderedFontSize = style.FontSize * renderScale;
 					const scale = Math.min(
-						0.88,
+						0.88 * fullscreenScale,
 						renderedFontSize > 0
 							? renderedFontLimit / renderedFontSize
-							: 0.88,
+							: 0.88 * fullscreenScale,
 					);
 					await renderer.renderer.setStyle(
 						{
