@@ -2,11 +2,35 @@ import { join } from "path";
 
 import maxmind from "maxmind";
 
-const mmdbPath = join(process.cwd(), "database", "country.mmdb");
+const defaultDatabasePath = join(process.cwd(), "database", "country.mmdb");
+let lookup = null;
 
-const lookup = await maxmind.open(mmdbPath);
-
-export function getCountry(ip) {
-	const result = lookup.get(ip);
-	return result?.country?.iso_code;
+async function initializeCountryLookup(
+	databasePath = defaultDatabasePath,
+	onError = () => {},
+) {
+	try {
+		lookup = await maxmind.open(databasePath);
+		return true;
+	} catch (error) {
+		lookup = null;
+		onError(error);
+		return false;
+	}
 }
+
+function getCountry(ip) {
+	if (!lookup || !ip) return null;
+
+	try {
+		return lookup.get(ip)?.country?.iso_code || null;
+	} catch {
+		return null;
+	}
+}
+
+function resetCountryLookup() {
+	lookup = null;
+}
+
+export { getCountry, initializeCountryLookup, resetCountryLookup };

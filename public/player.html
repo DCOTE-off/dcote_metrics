@@ -7,10 +7,10 @@
 			content="width=device-width, initial-scale=1.0, viewport-fit=cover"
 		/>
 		<title>Player</title>
-		<script src="https://cdn.jsdelivr.net/npm/shaka-player@5.1.6/dist/shaka-player.ui.js"></script>
+		<script src="vendor/shaka/shaka-player.ui.js"></script>
 		<link
 			rel="stylesheet"
-			href="https://cdn.jsdelivr.net/npm/shaka-player@5.1.6/dist/controls.css"
+			href="vendor/shaka/controls.css"
 		/>
 		<style>
 			@font-face {
@@ -434,7 +434,7 @@
 						<img
 							style="display: block; font-size: 16px"
 							class="shaka-ui-icon"
-							src="https://dcote.net/images/player-vector/file-x.svg"
+							src="icons/file-x.svg"
 						/>
 					</div>
 				</button>
@@ -468,6 +468,28 @@
 							location.host
 						}/metrics/ws`
 					: "wss://video.dcote.net/metrics-api/metrics/ws";
+
+			function sendJsonMetric(path, payload) {
+				try {
+					const data = JSON.stringify(payload);
+					const url = `${backendUrl}/metrics/${path}`;
+					if (typeof navigator.sendBeacon === "function") {
+						const blob = new Blob([data], { type: "application/json" });
+						return navigator.sendBeacon(url, blob);
+					}
+
+					fetch(url, {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: data,
+						keepalive: true,
+					}).catch(() => {});
+					return true;
+				} catch {
+					return false;
+				}
+			}
+
 			const viewingTime = { watchedSeconds: 0, startTime: null };
 			const viewStartedMetric = {
 				sent: false,
@@ -962,11 +984,9 @@
 				const key = JSON.stringify(metricDatas);
 				if (viewLabelsMetric.sentKey === key) return;
 
-				viewLabelsMetric.sentKey = key;
-				const url = backendUrl + "/metrics/view-labels";
-				const data = JSON.stringify(metricDatas);
-				const blob = new Blob([data], { type: "application/json" });
-				navigator.sendBeacon(url, blob);
+				if (sendJsonMetric("view-labels", metricDatas)) {
+					viewLabelsMetric.sentKey = key;
+				}
 			}
 			function clearViewStartedMetricTimer() {
 				if (viewStartedMetric.timerId) {
@@ -980,17 +1000,21 @@
 				const seconds = getViewingTimeSeconds();
 				if (seconds < viewStartedMetric.thresholdSeconds) return;
 
-				viewStartedMetric.sent = true;
 				clearViewStartedMetricTimer();
 				updateSelectedVoice(metricPlayer);
 
-				const url = backendUrl + "/metrics/view-started";
-				const data = JSON.stringify({
+				const queued = sendJsonMetric("view-started", {
 					seconds,
 					...metricDatas,
 				});
-				const blob = new Blob([data], { type: "application/json" });
-				navigator.sendBeacon(url, blob);
+				if (queued) {
+					viewStartedMetric.sent = true;
+				} else if (viewingTime.startTime) {
+					viewStartedMetric.timerId = setTimeout(
+						updateViewStartedMetricState,
+						5000,
+					);
+				}
 			}
 			function scheduleViewStartedMetricCheck() {
 				clearViewStartedMetricTimer();
@@ -1046,17 +1070,21 @@
 			}
 			function sendSubtitleMetric() {
 				if (subtitleMetric.sent) return;
-				subtitleMetric.sent = true;
 				clearSubtitleMetricTimer();
 
-				const url = backendUrl + "/metrics/subtitles";
-				const data = JSON.stringify({
+				const queued = sendJsonMetric("subtitles", {
 					seconds: Math.floor(getSubtitleMetricSeconds()),
 					season: metricDatas.season,
 					episode: metricDatas.episode,
 				});
-				const blob = new Blob([data], { type: "application/json" });
-				navigator.sendBeacon(url, blob);
+				if (queued) {
+					subtitleMetric.sent = true;
+				} else {
+					subtitleMetric.timerId = setTimeout(
+						updateSubtitleMetricState,
+						5000,
+					);
+				}
 			}
 			function scheduleSubtitleMetricCheck() {
 				clearSubtitleMetricTimer();
@@ -1144,14 +1172,11 @@
 
 				if (viewingTime.watchedSeconds < 30) return;
 
-				const url = backendUrl + "/metrics/viewing-time";
-				const data = JSON.stringify({
+				const queued = sendJsonMetric("viewing-time", {
 					seconds: viewingTime.watchedSeconds,
 					...metricDatas,
 				});
-				const blob = new Blob([data], { type: "application/json" });
-				navigator.sendBeacon(url, blob);
-				viewingTime.watchedSeconds = 0;
+				if (queued) viewingTime.watchedSeconds = 0;
 			}
 			document.addEventListener("visibilitychange", function () {
 				if (document.visibilityState === "hidden") {

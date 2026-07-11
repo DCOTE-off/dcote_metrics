@@ -3,10 +3,27 @@
 	window.__dcoteSitePresenceStarted = true;
 
 	const config = window.DCOTE_SITE_METRICS || {};
-	const heartbeatMs = config.heartbeatMs || 15000;
-	const reconnectMs = config.reconnectMs || 3000;
+	const heartbeatMs = Math.min(
+		60000,
+		Math.max(5000, Number(config.heartbeatMs) || 15000),
+	);
+	const reconnectMs = Math.min(
+		30000,
+		Math.max(1000, Number(config.reconnectMs) || 3000),
+	);
+	const maxReconnectMs = Math.min(
+		120000,
+		Math.max(reconnectMs, Number(config.maxReconnectMs) || 60000),
+	);
 	const reconnectJitterMs =
-		config.reconnectJitterMs ?? Math.min(1500, Math.max(500, reconnectMs / 2));
+		Math.min(
+			5000,
+			Math.max(
+				0,
+				Number(config.reconnectJitterMs)
+					|| Math.min(1500, Math.max(500, reconnectMs / 2)),
+			),
+		);
 	const storageKey = config.storageKey || "dcote_metrics_session_id";
 
 	let websocket = null;
@@ -14,6 +31,7 @@
 	let heartbeatTimer = null;
 	let sessionId = null;
 	let pageIsActive = true;
+	let reconnectAttempt = 0;
 	const tabId = createId("tab");
 
 	function createId(prefix) {
@@ -138,7 +156,12 @@
 	}
 
 	function getReconnectDelay() {
-		return reconnectMs + Math.floor(Math.random() * reconnectJitterMs);
+		const exponentialDelay = Math.min(
+			maxReconnectMs,
+			reconnectMs * 2 ** Math.min(reconnectAttempt, 8),
+		);
+		reconnectAttempt += 1;
+		return exponentialDelay + Math.floor(Math.random() * reconnectJitterMs);
 	}
 
 	function scheduleReconnect() {
@@ -157,14 +180,26 @@
 		clearReconnectTimer();
 		clearHeartbeatTimer();
 
-		websocket = new WebSocket(websocketUrl);
-		websocket.addEventListener("open", () => {
+		let nextWebsocket;
+		try {
+			nextWebsocket = new WebSocket(websocketUrl);
+		} catch {
+			scheduleReconnect();
+			return;
+		}
+
+		websocket = nextWebsocket;
+		nextWebsocket.addEventListener("open", () => {
+			if (websocket !== nextWebsocket) return;
+			reconnectAttempt = 0;
 			sendPresence();
 			heartbeatTimer = window.setInterval(sendPresence, heartbeatMs);
 		});
-		websocket.addEventListener("close", scheduleReconnect);
-		websocket.addEventListener("error", () => {
-			if (websocket) websocket.close();
+		nextWebsocket.addEventListener("close", () => {
+			if (websocket === nextWebsocket) scheduleReconnect();
+		});
+		nextWebsocket.addEventListener("error", () => {
+			nextWebsocket.close();
 		});
 	}
 
