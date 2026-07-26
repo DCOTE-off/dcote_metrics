@@ -9,7 +9,7 @@ import {
 	sitePageVisits,
 } from "./metrics.js";
 
-const SITE_PRESENCE_TTL_MS = 45 * 1000;
+const SITE_PRESENCE_TTL_MS = 2 * 60 * 1000;
 const SITE_PRESENCE_CLEANUP_INTERVAL_MS = 15 * 1000;
 const SITE_VISIT_TTL_MS = 30 * 60 * 1000;
 const OTHER_PAGE = "other";
@@ -25,9 +25,33 @@ let limits = {
 	maxRecentSessions: 20_000,
 	maxRecentTabs: 40_000,
 };
+let analyticsHandlers = {
+	recordVisitEvent: null,
+	recordPageViewEvent: null,
+	recordGlobalPresence: null,
+};
 
 function configureSitePresence(nextLimits = {}) {
-	limits = { ...limits, ...nextLimits };
+	const {
+		recordVisitEvent,
+		recordPageViewEvent,
+		recordGlobalPresence,
+		initialPages,
+		...nextNumericLimits
+	} = nextLimits;
+	limits = { ...limits, ...nextNumericLimits };
+	analyticsHandlers = {
+		recordVisitEvent: Object.hasOwn(nextLimits, "recordVisitEvent")
+			? recordVisitEvent
+			: analyticsHandlers.recordVisitEvent,
+		recordPageViewEvent: Object.hasOwn(nextLimits, "recordPageViewEvent")
+			? recordPageViewEvent
+			: analyticsHandlers.recordPageViewEvent,
+		recordGlobalPresence: Object.hasOwn(nextLimits, "recordGlobalPresence")
+			? recordGlobalPresence
+			: analyticsHandlers.recordGlobalPresence,
+	};
+	for (const page of initialPages || []) normalizePage(page);
 }
 
 function createConnectionId() {
@@ -76,21 +100,25 @@ function normalizeId(value) {
 	return normalizeMetricString(value, null, 120);
 }
 
-function normalizeUserId(value) {
-	if (value === true) return "registered";
-	if (value === false) return "anonymous";
+function normalizeUserId(value, sessionId) {
+	if (value === true) return `session:${sessionId}`;
+	if (value === false) return null;
 
-	const normalized = normalizeMetricString(value, null, 40)?.toLowerCase();
+	const normalized = normalizeMetricString(value, null, 120);
+	const comparisonValue = normalized?.toLowerCase();
 	if (
 		!normalized
-		|| normalized === "anonymous"
-		|| normalized === "guest"
-		|| normalized === "false"
-		|| normalized === "0"
+		|| comparisonValue === "anonymous"
+		|| comparisonValue === "guest"
+		|| comparisonValue === "false"
+		|| comparisonValue === "0"
 	) {
-		return "anonymous";
+		return null;
 	}
-	return "registered";
+	if (comparisonValue === "registered" || comparisonValue === "true") {
+		return `session:${sessionId}`;
+	}
+	return normalized;
 }
 
 function getPayloadValue(payload, previous, key) {
@@ -109,32 +137,98 @@ function setBoundedMapValue(map, key, value, maximumSize) {
 	map.set(key, value);
 }
 
-function recordSessionVisit(sessionId, now) {
-	const previousVisitAt = recentVisitSessions.get(sessionId);
-	if (isExpired(previousVisitAt, now, SITE_VISIT_TTL_MS)) siteVisits.inc();
+function recordSessionVisit(sessionId, visitId, visitStarted, now) {
+	if (visitStarted === true) {
+		const eventId = visitId || `session:${sessionId}`;
+		const inserted = analyticsHandlers.recordVisitEvent
+			? analyticsHandlers.recordVisitEvent({
+				eventId,
+				occurredAtMs: now,
+			})
+			: !recentVisitSessions.has(eventId);
+		if (inserted) siteVisits.inc();
+		setBoundedMapValue(
+			recentVisitSessions,
+			eventId,
+			now,
+			limits.maxRecentSessions,
+		);
+		return eventId;
+	}
+	if (visitStarted === false) return null;
+
+	// Compatibility with tracker versions that predate explicit visit events.
+	const legacyEventId = `legacy:${sessionId}`;
+	const previousVisitAt = recentVisitSessions.get(legacyEventId);
+	if (isExpired(previousVisitAt, now, SITE_VISIT_TTL_MS)) {
+		const inserted = analyticsHandlers.recordVisitEvent
+			? analyticsHandlers.recordVisitEvent({
+				eventId: `${legacyEventId}:${now}`,
+				occurredAtMs: now,
+			})
+			: true;
+		if (inserted) siteVisits.inc();
+	}
 	setBoundedMapValue(
 		recentVisitSessions,
-		sessionId,
+		legacyEventId,
 		now,
 		limits.maxRecentSessions,
 	);
+	return null;
 }
 
-function recordPageVisit(tabId, page, now) {
-	const previousPageVisit = recentPageVisits.get(tabId);
+function recordPageVisit(
+	tabId,
+	page,
+	pageViewId,
+	pageViewStarted,
+	now,
+) {
+	if (pageViewStarted === true) {
+		const eventId = pageViewId || `tab:${tabId}:${page}`;
+		const inserted = analyticsHandlers.recordPageViewEvent
+			? analyticsHandlers.recordPageViewEvent({
+				eventId,
+				page,
+				occurredAtMs: now,
+			})
+			: !recentPageVisits.has(eventId);
+		if (inserted) sitePageVisits.inc({ page });
+		setBoundedMapValue(
+			recentPageVisits,
+			eventId,
+			{ page, lastSeenAt: now },
+			limits.maxRecentTabs,
+		);
+		return eventId;
+	}
+	if (pageViewStarted === false) return null;
+
+	// Compatibility with tracker versions that predate explicit page-view events.
+	const legacyEventId = `legacy:${tabId}`;
+	const previousPageVisit = recentPageVisits.get(legacyEventId);
 	if (
 		!previousPageVisit
 		|| previousPageVisit.page !== page
 		|| isExpired(previousPageVisit.lastSeenAt, now, SITE_VISIT_TTL_MS)
 	) {
-		sitePageVisits.inc({ page });
+		const inserted = analyticsHandlers.recordPageViewEvent
+			? analyticsHandlers.recordPageViewEvent({
+				eventId: `${legacyEventId}:${page}:${now}`,
+				page,
+				occurredAtMs: now,
+			})
+			: true;
+		if (inserted) sitePageVisits.inc({ page });
 	}
 	setBoundedMapValue(
 		recentPageVisits,
-		tabId,
+		legacyEventId,
 		{ page, lastSeenAt: now },
 		limits.maxRecentTabs,
 	);
+	return null;
 }
 
 function removeConnection(connectionId) {
@@ -155,7 +249,7 @@ function removeDuplicateTabConnection(connectionId, tabId) {
 	return otherConnection;
 }
 
-function updateSitePresenceMetrics() {
+function updateSitePresenceMetrics(now = Date.now()) {
 	const pageStats = new Map();
 	const sessions = new Set();
 	const users = new Set();
@@ -176,9 +270,9 @@ function updateSitePresenceMetrics() {
 		stats.tabs += 1;
 		stats.sessions.add(connection.sessionId);
 		sessions.add(connection.sessionId);
-		if (connection.userId === "registered") {
-			stats.users.add(connection.sessionId);
-			users.add(connection.sessionId);
+		if (connection.userId) {
+			stats.users.add(connection.userId);
+			users.add(connection.userId);
 		}
 	}
 
@@ -191,6 +285,12 @@ function updateSitePresenceMetrics() {
 	activeSiteTabsGlobal.set(activeConnections.size);
 	activeSiteSessionsGlobal.set(sessions.size);
 	activeSiteUsersGlobal.set(users.size);
+	analyticsHandlers.recordGlobalPresence?.({
+		tabs: activeConnections.size,
+		sessions: sessions.size,
+		users: users.size,
+		occurredAtMs: now,
+	});
 }
 
 function cleanupStaleSitePresenceConnections(now = Date.now()) {
@@ -232,14 +332,30 @@ function touchSitePresenceConnection(connectionId, payload = {}) {
 	const page = normalizePage(getPayloadValue(payload, previous, "page"));
 	const sessionId = normalizeId(getPayloadValue(payload, previous, "sessionId"));
 	const tabId = normalizeId(getPayloadValue(payload, previous, "tabId"));
-	const userId = normalizeUserId(getPayloadValue(payload, previous, "userId"));
 	if (!sessionId || !tabId) {
 		return { ok: false, error: "sessionId and tabId are required" };
 	}
+	const userId = normalizeUserId(
+		getPayloadValue(payload, previous, "userId"),
+		sessionId,
+	);
 
 	const now = Date.now();
-	recordSessionVisit(sessionId, now);
-	recordPageVisit(tabId, page, now);
+	const visitId = normalizeId(payload.visitId);
+	const pageViewId = normalizeId(payload.pageViewId);
+	const visitAcknowledged = recordSessionVisit(
+		sessionId,
+		visitId,
+		payload.visitStarted,
+		now,
+	);
+	const pageViewAcknowledged = recordPageVisit(
+		tabId,
+		page,
+		pageViewId,
+		payload.pageViewStarted,
+		now,
+	);
 	const duplicate = removeDuplicateTabConnection(connectionId, tabId);
 	const changed = !previous
 		|| Boolean(duplicate)
@@ -261,7 +377,18 @@ function touchSitePresenceConnection(connectionId, payload = {}) {
 	});
 	connectionIdByTabId.set(tabId, connectionId);
 	if (changed) updateSitePresenceMetrics();
-	return { ok: true };
+	return {
+		ok: true,
+		visitAcknowledged,
+		pageViewAcknowledged,
+	};
+}
+
+function heartbeatSitePresenceConnection(connectionId, now = Date.now()) {
+	const connection = activeConnections.get(connectionId);
+	if (!connection) return false;
+	connection.updatedAt = now;
+	return true;
 }
 
 function unregisterSitePresenceConnection(connectionId) {
@@ -274,6 +401,20 @@ function getSitePresenceDiagnostics() {
 		recentSessions: recentVisitSessions.size,
 		recentTabs: recentPageVisits.size,
 		seenPages: seenPages.size,
+	};
+}
+
+function getSitePresenceSnapshot() {
+	const sessions = new Set();
+	const users = new Set();
+	for (const connection of activeConnections.values()) {
+		sessions.add(connection.sessionId);
+		if (connection.userId) users.add(connection.userId);
+	}
+	return {
+		tabs: activeConnections.size,
+		sessions: sessions.size,
+		users: users.size,
 	};
 }
 
@@ -291,6 +432,8 @@ export {
 	cleanupStaleSitePresenceConnections,
 	configureSitePresence,
 	getSitePresenceDiagnostics,
+	getSitePresenceSnapshot,
+	heartbeatSitePresenceConnection,
 	registerSitePresenceConnection,
 	resetSitePresenceForTests,
 	touchSitePresenceConnection,

@@ -10,6 +10,7 @@ function createConfig(overrides = {}) {
 		...getRuntimeConfig({
 			METRICS_ALLOWED_ORIGINS: "https://dcote.net",
 			METRICS_AUTH_TOKEN_FILE: "Z:/missing/metrics-token",
+			ANALYTICS_DATABASE_PATH: ":memory:",
 		}),
 		...overrides,
 	};
@@ -27,8 +28,9 @@ test("player and health stay available when optional services are absent", async
 	assert.equal(health.statusCode, 200);
 	assert.deepEqual(health.json(), {
 		ok: true,
-		metricsConfigured: true,
+		metricsConfigured: false,
 		geoDatabaseReady: false,
+		analyticsReady: true,
 	});
 	const player = await app.inject({ method: "GET", url: "/videoplayer" });
 	assert.equal(player.statusCode, 200);
@@ -40,21 +42,13 @@ test("player and health stay available when optional services are absent", async
 		})).statusCode,
 		200,
 	);
-	const tracker = await app.inject({
-		method: "GET",
-		url: "/metrics-api/site-presence-tracker.js",
-	});
-	assert.equal(tracker.statusCode, 200);
-	assert.match(tracker.body, /\/metrics\/site\/ws/);
-	assert.equal((await app.inject({ method: "GET", url: "/metrics" })).statusCode, 403);
-	assert.equal((await app.inject({
-		method: "GET",
-		url: "/metrics",
-		headers: { authorization: "Bearer SUPERSECRETPASSWORD" },
-	})).statusCode, 200);
+	assert.equal(
+		(await app.inject({ method: "GET", url: "/metrics" })).statusCode,
+		503,
+	);
 });
 
-test("scrape token, origins, labels and series limit are enforced", async (t) => {
+test("scrape token, origins, labels and bounded overflow series are enforced", async (t) => {
 	const app = await buildApp({
 		config: createConfig({ maxVideoSeries: 1 }),
 		metricsAuthToken: "test-secret",
@@ -103,7 +97,49 @@ test("scrape token, origins, labels and series limit are enforced", async (t) =>
 		headers: { origin: "https://dcote.net" },
 		payload: { season: "1", episode: "2", voice: "A" },
 	});
-	assert.equal(overflow.statusCode, 429);
+	assert.equal(overflow.statusCode, 200);
+	const viewStartedPayload = {
+		eventId: "view-started:test-event-0001",
+		seconds: 30,
+		season: "1",
+		episode: "1",
+		voice: "A",
+	};
+	const countedView = await app.inject({
+		method: "POST",
+		url: "/metrics/view-started",
+		headers: { origin: "https://dcote.net" },
+		payload: viewStartedPayload,
+	});
+	const duplicateView = await app.inject({
+		method: "POST",
+		url: "/metrics/view-started",
+		headers: { origin: "https://dcote.net" },
+		payload: viewStartedPayload,
+	});
+	assert.deepEqual(countedView.json(), { ok: true, duplicate: false });
+	assert.deepEqual(duplicateView.json(), { ok: true, duplicate: true });
+	const metricsAfterEvents = await app.inject({
+		method: "GET",
+		url: "/metrics",
+		headers: { authorization: "Bearer test-secret" },
+	});
+	assert.match(
+		metricsAfterEvents.body,
+		/video_views_total\{country="Other",season="Unknown",episode="Unknown",voice="Other"\} 0/,
+	);
+	assert.match(
+		metricsAfterEvents.body,
+		/subtitles_enabled_total\{country="NL",season="1",episode="1"\} 0/,
+	);
+	assert.match(
+		metricsAfterEvents.body,
+		/viewing_duration_seconds_count\{country="NL",season="1",episode="1",voice="A"\} 0/,
+	);
+	assert.match(
+		metricsAfterEvents.body,
+		/video_views_total\{country="NL",season="1",episode="1",voice="A"\} 1/,
+	);
 });
 
 test("site presence websocket accepts bounded valid messages", async (t) => {
@@ -129,11 +165,19 @@ test("site presence websocket accepts bounded valid messages", async (t) => {
 		page: "/anime",
 		sessionId: "session-test",
 		tabId: "tab-test",
-		userId: false,
+		userId: "user-hash",
+		visitId: "visit-test",
+		visitStarted: true,
+		pageViewId: "page-view-test",
+		pageViewStarted: true,
 	}));
 	const response = await new Promise((resolve, reject) => {
 		socket.once("message", (message) => resolve(JSON.parse(message)));
 		socket.once("error", reject);
 	});
-	assert.deepEqual(response, { ok: true });
+	assert.deepEqual(response, {
+		ok: true,
+		visitAcknowledged: "visit-test",
+		pageViewAcknowledged: "page-view-test",
+	});
 });

@@ -1,2 +1,9 @@
 node_modules
 test
+.git
+.env
+.env.*
+!.env.example
+.cache
+coverage
+npm-debug.log*

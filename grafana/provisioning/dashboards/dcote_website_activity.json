@@ -87,7 +87,7 @@
 				"y": 0
 			},
 			"id": 6,
-			"maxDataPoints": 600000,
+			"maxDataPoints": 5000,
 			"options": {
 				"annotations": {
 					"clustering": -1,
@@ -96,8 +96,7 @@
 				"legend": {
 					"calcs": [
 						"min",
-						"max",
-						"lastNotNull"
+						"max"
 					],
 					"displayMode": "table",
 					"placement": "bottom",
@@ -113,10 +112,11 @@
 			"targets": [
 				{
 					"datasource": {
-						"type": "prometheus"
+						"type": "prometheus",
+						"uid": "dcote-analytics"
 					},
 					"editorMode": "code",
-					"expr": "sum(active_site_users_global{job=\"backend\"}) or vector(0)",
+					"expr": "dcote_presence{metric=\"active_site_users\"}",
 					"interval": "5s",
 					"legendFormat": "Активные пользователи сайта",
 					"range": true,
@@ -230,7 +230,7 @@
 				"y": 0
 			},
 			"id": 8,
-			"maxDataPoints": 600000,
+			"maxDataPoints": 5000,
 			"options": {
 				"annotations": {
 					"clustering": -1,
@@ -239,8 +239,7 @@
 				"legend": {
 					"calcs": [
 						"min",
-						"max",
-						"lastNotNull"
+						"max"
 					],
 					"displayMode": "table",
 					"placement": "bottom",
@@ -256,10 +255,11 @@
 			"targets": [
 				{
 					"datasource": {
-						"type": "prometheus"
+						"type": "prometheus",
+						"uid": "dcote-analytics"
 					},
 					"editorMode": "code",
-					"expr": "sum(active_site_tabs_global{job=\"backend\"}) or vector(0)",
+					"expr": "dcote_presence{metric=\"active_site_tabs\"}",
 					"interval": "5s",
 					"legendFormat": "Открытые вкладки сайта",
 					"range": true,
@@ -267,10 +267,11 @@
 				},
 				{
 					"datasource": {
-						"type": "prometheus"
+						"type": "prometheus",
+						"uid": "dcote-analytics"
 					},
 					"editorMode": "code",
-					"expr": "sum(active_site_sessions_global{job=\"backend\"}) or vector(0)",
+					"expr": "dcote_presence{metric=\"active_site_sessions\"}",
 					"interval": "5s",
 					"legendFormat": "Активные сессии сайта",
 					"range": true,
@@ -686,10 +687,11 @@
 			"targets": [
 				{
 					"datasource": {
-						"type": "prometheus"
+						"type": "prometheus",
+						"uid": "dcote-analytics"
 					},
 					"editorMode": "code",
-					"expr": "round(sum(increase(site_visits_total{job=\"backend\"}[$__range]))) or vector(0)",
+					"expr": "dcote_site_visits{range_s=\"$__range_s\",group_by=\"none\"}",
 					"instant": true,
 					"legendFormat": "__auto",
 					"range": false,
@@ -758,10 +760,11 @@
 			"targets": [
 				{
 					"datasource": {
-						"type": "prometheus"
+						"type": "prometheus",
+						"uid": "dcote-analytics"
 					},
 					"editorMode": "code",
-					"expr": "sort_desc((round(sum by (page) (increase(site_page_visits_total{job=\"backend\"}[$__range]))) > 0))",
+					"expr": "dcote_site_page_visits{range_s=\"$__range_s\",group_by=\"page\"}",
 					"instant": true,
 					"legendFormat": "{{page}}",
 					"range": false,

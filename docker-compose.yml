@@ -1,63 +1,107 @@
 name: metrics-api
+
 services:
     backend:
         build:
             context: .
-            target: ${STAGE}
+            target: ${STAGE:-production}
+        restart: unless-stopped
+        init: true
+        environment:
+            METRICS_AUTH_TOKEN_FILE: /run/secrets/metrics_auth_token
+            METRICS_ALLOWED_ORIGINS: ${METRICS_ALLOWED_ORIGINS:-https://dcote.net,https://www.dcote.net,https://video.dcote.net,http://localhost:7654,http://127.0.0.1:7654}
+            ANALYTICS_DATABASE_PATH: /var/lib/dcote-metrics/analytics.sqlite
+            ANALYTICS_RETENTION_DAYS: ${ANALYTICS_RETENTION_DAYS:-400}
+            LOG_LEVEL: ${LOG_LEVEL:-info}
+        secrets:
+            - metrics_auth_token
         networks:
             - server-side
         ports:
-            - 7654:3000
+            - "${BACKEND_BIND_ADDRESS:-127.0.0.1}:${BACKEND_PORT:-7654}:3000"
+        volumes:
+            - analytics_data:/var/lib/dcote-metrics
+        healthcheck:
+            test:
+                - CMD
+                - node
+                - -e
+                - "fetch('http://127.0.0.1:3000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+            interval: 15s
+            timeout: 5s
+            retries: 5
+            start_period: 15s
         develop:
             watch:
                 - action: sync
                   path: .
                   target: /usr/local/app
+                  ignore:
+                      - node_modules/
+                      - .git/
+
     prometheus:
-        image: prom/prometheus
-        container_name: prometheus
+        image: prom/prometheus:v3.13.1
+        restart: unless-stopped
         command:
             - "--config.file=/etc/prometheus/prometheus.yml"
             - "--storage.tsdb.path=/prometheus"
             - "--storage.tsdb.retention.time=30d"
+            - "--query.timeout=5m"
         volumes:
-            - ./prometheus.yml:/etc/prometheus/prometheus.yml
+            - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
             - prometheus_data:/prometheus
+        secrets:
+            - metrics_auth_token
         ports:
-            - "9090:9090"
+            - "${PROMETHEUS_BIND_ADDRESS:-127.0.0.1}:${PROMETHEUS_PORT:-9090}:9090"
         networks:
             - server-side
-        extra_hosts:
-            - "host.docker.internal:host-gateway"
+        depends_on:
+            backend:
+                condition: service_healthy
+            node_exporter:
+                condition: service_started
+
     grafana:
-        image: grafana/grafana
-        container_name: grafana
+        image: grafana/grafana:13.0.2
+        restart: unless-stopped
         ports:
-            - "7070:3000"
+            - "${GRAFANA_BIND_ADDRESS:-127.0.0.1}:${GRAFANA_PORT:-7070}:3000"
         networks:
             - server-side
         environment:
-            - GF_SECURITY_ADMIN_USER=${GF_SECURITY_ADMIN_USER}
-            - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD}
-            - GF_SERVER_ROOT_URL=${GF_SERVER_ROOT_URL}
-            - GF_SERVER_SERVE_FROM_SUB_PATH=${GF_SERVER_SERVE_FROM_SUB_PATH}
-            - GF_DATAPROXY_TIMEOUT=120
+            GF_SECURITY_ADMIN_USER: ${GF_SECURITY_ADMIN_USER}
+            GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD}
+            GF_SERVER_ROOT_URL: ${GF_SERVER_ROOT_URL}
+            GF_SERVER_SERVE_FROM_SUB_PATH: ${GF_SERVER_SERVE_FROM_SUB_PATH:-true}
+            GF_DATAPROXY_TIMEOUT: 300
+            GF_PLUGINS_PREINSTALL_DISABLED: "true"
         volumes:
-            - ./grafana/provisioning:/etc/grafana/provisioning
+            - ./grafana/provisioning:/etc/grafana/provisioning:ro
+        depends_on:
+            - prometheus
+
     node_exporter:
-        image: quay.io/prometheus/node-exporter:latest
-        container_name: node_exporter
-        network_mode: "host"
-        pid: "host"
-        volumes:
-            - /:/host:ro,rslave
-        command:
-            - '--path.rootfs=/host'
+        image: quay.io/prometheus/node-exporter:v1.12.0
         restart: unless-stopped
+        pid: host
+        networks:
+            - server-side
+        volumes:
+            - /:/host:ro
+        command:
+            - "--path.rootfs=/host"
 
 networks:
     server-side: {}
 
 volumes:
+    analytics_data:
+        driver: local
     prometheus_data:
         driver: local
+
+secrets:
+    metrics_auth_token:
+        environment: METRICS_AUTH_TOKEN

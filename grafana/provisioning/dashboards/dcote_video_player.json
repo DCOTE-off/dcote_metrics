@@ -85,8 +85,9 @@
 					},
 					"editorMode": "builder",
 					"expr": "sum(active_viewers{job=\"backend\"}) or vector(0)",
+					"instant": true,
 					"legendFormat": "__auto",
-					"range": true,
+					"range": false,
 					"refId": "A"
 				}
 			],
@@ -164,7 +165,7 @@
 				"y": 0
 			},
 			"id": 2,
-			"maxDataPoints": 600000,
+			"maxDataPoints": 5000,
 			"options": {
 				"annotations": {
 					"clustering": -1,
@@ -173,8 +174,7 @@
 				"legend": {
 					"calcs": [
 						"min",
-						"max",
-						"lastNotNull"
+						"max"
 					],
 					"displayMode": "table",
 					"placement": "bottom",
@@ -190,10 +190,11 @@
 			"targets": [
 				{
 					"datasource": {
-						"type": "prometheus"
+						"type": "prometheus",
+						"uid": "dcote-analytics"
 					},
 					"editorMode": "code",
-					"expr": "sum(active_viewers{job=\"backend\"}) or vector(0)",
+					"expr": "dcote_presence{metric=\"active_viewers\"}",
 					"interval": "5s",
 					"legendFormat": "Онлайн зрители",
 					"range": true,
@@ -257,10 +258,11 @@
 			"targets": [
 				{
 					"datasource": {
-						"type": "prometheus"
+						"type": "prometheus",
+						"uid": "dcote-analytics"
 					},
 					"editorMode": "code",
-					"expr": "round(sum(increase(video_views_total{job=\"backend\"}[$__range]))) or vector(0)",
+					"expr": "dcote_video_views{range_s=\"$__range_s\",group_by=\"none\"}",
 					"instant": true,
 					"legendFormat": "__auto",
 					"range": false,
@@ -326,10 +328,11 @@
 			"targets": [
 				{
 					"datasource": {
-						"type": "prometheus"
+						"type": "prometheus",
+						"uid": "dcote-analytics"
 					},
 					"editorMode": "code",
-					"expr": "(\r\n  sum(increase(viewing_duration_seconds_sum{job=\"backend\"}[$__range]))\r\n  /\r\n  (sum(increase(viewing_duration_seconds_count{job=\"backend\"}[$__range])) > 0)\r\n)\r\nor vector(0)",
+					"expr": "dcote_viewing_duration_average_seconds{range_s=\"$__range_s\",group_by=\"none\"}",
 					"instant": true,
 					"legendFormat": "__auto",
 					"range": false,
@@ -394,10 +397,11 @@
 			"targets": [
 				{
 					"datasource": {
-						"type": "prometheus"
+						"type": "prometheus",
+						"uid": "dcote-analytics"
 					},
 					"editorMode": "code",
-					"expr": "sum(increase(viewing_duration_seconds_sum{job=\"backend\"}[$__range])) or vector(0)",
+					"expr": "dcote_viewing_duration_seconds{range_s=\"$__range_s\",group_by=\"none\"}",
 					"instant": true,
 					"legendFormat": "__auto",
 					"range": false,
@@ -468,10 +472,10 @@
 				{
 					"datasource": {
 						"type": "prometheus",
-						"uid": "PBFA97CFB590B2093"
+						"uid": "dcote-analytics"
 					},
 					"editorMode": "code",
-					"expr": "(round(sum by (country) (increase(video_views_total{job=\"backend\"}[$__range]))) > 0)",
+					"expr": "dcote_video_views{range_s=\"$__range_s\",group_by=\"country\"}",
 					"instant": true,
 					"legendFormat": "__auto",
 					"range": false,
@@ -542,10 +546,10 @@
 				{
 					"datasource": {
 						"type": "prometheus",
-						"uid": "PBFA97CFB590B2093"
+						"uid": "dcote-analytics"
 					},
 					"editorMode": "code",
-					"expr": "(round(sum by (season) (increase(video_views_total{job=\"backend\"}[$__range]))) > 0)",
+					"expr": "dcote_video_views{range_s=\"$__range_s\",group_by=\"season\"}",
 					"instant": true,
 					"legendFormat": "__auto",
 					"range": false,
@@ -610,10 +614,10 @@
 				{
 					"datasource": {
 						"type": "prometheus",
-						"uid": "PBFA97CFB590B2093"
+						"uid": "dcote-analytics"
 					},
 					"editorMode": "code",
-					"expr": "(round(sum by (voice) (increase(video_views_total{job=\"backend\"}[$__range]))) > 0)",
+					"expr": "dcote_video_views{range_s=\"$__range_s\",group_by=\"voice\"}",
 					"instant": true,
 					"legendFormat": "__auto",
 					"range": false,
@@ -679,10 +683,10 @@
 				{
 					"datasource": {
 						"type": "prometheus",
-						"uid": "PBFA97CFB590B2093"
+						"uid": "dcote-analytics"
 					},
 					"editorMode": "code",
-					"expr": "round(sum(increase(subtitles_enabled_total{job=\"backend\"}[$__range]))) or vector(0)",
+					"expr": "dcote_subtitles_enabled{range_s=\"$__range_s\",group_by=\"none\"}",
 					"instant": true,
 					"legendFormat": "__auto",
 					"range": false,
@@ -751,11 +755,11 @@
 				{
 					"datasource": {
 						"type": "prometheus",
-						"uid": "PBFA97CFB590B2093"
+						"uid": "dcote-analytics"
 					},
 					"editorMode": "code",
 					"exemplar": false,
-					"expr": "topk(10, (round(sum by (season, episode) (increase(video_views_total{job=\"backend\"}[$__range]))) > 0))",
+					"expr": "dcote_video_views{range_s=\"$__range_s\",group_by=\"episode\",limit=\"10\"}",
 					"format": "table",
 					"instant": true,
 					"legendFormat": "__auto",
@@ -854,11 +858,11 @@
 				{
 					"datasource": {
 						"type": "prometheus",
-						"uid": "PBFA97CFB590B2093"
+						"uid": "dcote-analytics"
 					},
 					"editorMode": "code",
 					"exemplar": false,
-					"expr": "sort_desc((round(sum by (season, episode, voice) (increase(video_views_total{job=\"backend\"}[$__range]))) > 0))",
+					"expr": "dcote_video_views{range_s=\"$__range_s\",group_by=\"episode_voice\"}",
 					"format": "table",
 					"instant": true,
 					"legendFormat": "__auto",
@@ -959,11 +963,11 @@
 				{
 					"datasource": {
 						"type": "prometheus",
-						"uid": "PBFA97CFB590B2093"
+						"uid": "dcote-analytics"
 					},
 					"editorMode": "code",
 					"exemplar": false,
-					"expr": "sort_desc((round(sum by (season, episode) (increase(subtitles_enabled_total{job=\"backend\"}[$__range]))) > 0))",
+					"expr": "dcote_subtitles_enabled{range_s=\"$__range_s\",group_by=\"episode\"}",
 					"format": "table",
 					"instant": true,
 					"legendFormat": "__auto",
@@ -1009,7 +1013,7 @@
 		}
 	],
 	"preload": false,
-	"refresh": "",
+	"refresh": "5s",
 	"schemaVersion": 42,
 	"time": {
 		"from": "now-1h",

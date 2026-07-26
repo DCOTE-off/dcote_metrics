@@ -54,6 +54,14 @@ function getRuntimeConfig(env = process.env) {
 		metricsAuthToken: env.METRICS_AUTH_TOKEN?.trim() || null,
 		metricsAuthTokenFile:
 			env.METRICS_AUTH_TOKEN_FILE || "/run/secrets/metrics_auth_token",
+		analyticsDatabasePath:
+			env.ANALYTICS_DATABASE_PATH
+			|| "/var/lib/dcote-metrics/analytics.sqlite",
+		analyticsRetentionDays: getPositiveInteger(
+			env.ANALYTICS_RETENTION_DAYS,
+			400,
+			{ min: 366, max: 3_650 },
+		),
 		httpRateLimit: getPositiveInteger(env.METRICS_HTTP_RATE_LIMIT, 240),
 		httpRateWindowMs: getPositiveInteger(
 			env.METRICS_HTTP_RATE_WINDOW_MS,
@@ -68,10 +76,10 @@ function getRuntimeConfig(env = process.env) {
 			env.METRICS_MAX_RATE_LIMIT_KEYS,
 			10_000,
 		),
-		maxVideoSeries: getPositiveInteger(env.METRICS_MAX_VIDEO_SERIES, 500),
+		maxVideoSeries: getPositiveInteger(env.METRICS_MAX_VIDEO_SERIES, 5_000),
 		maxSubtitleSeries: getPositiveInteger(
 			env.METRICS_MAX_SUBTITLE_SERIES,
-			500,
+			5_000,
 		),
 		maxSitePages: getPositiveInteger(env.METRICS_MAX_SITE_PAGES, 200),
 		maxRecentSessions: getPositiveInteger(

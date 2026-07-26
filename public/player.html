@@ -444,7 +444,10 @@
 			</div>
 		</div>
 		<script>
+			// Конфигурация берётся из query-параметров: один и тот же HTML работает
+			// и локально, и в production под /metrics-api.
 			const playerParams = new URLSearchParams(location.search);
+			const VIEW_METRIC_THRESHOLD_SECONDS = 30;
 			const requestedVttBottomLine = Number(
 				playerParams.get("vtt_bottom_line") || "88",
 			);
@@ -457,69 +460,281 @@
 				playerParams.get("stage") ||
 				(localHostnamePattern.test(location.hostname) ? "dev" : "prod");
 			const backendUrl =
-				stage == "dev"
+				stage === "dev"
 					? location.origin
 					: "https://video.dcote.net/metrics-api";
 			const playerAssetBase = backendUrl;
 			const jassubAssetVersion = "canvas2d-1";
 			const websocketUrl =
-				stage == "dev"
+				stage === "dev"
 					? `${location.protocol === "https:" ? "wss" : "ws"}://${
 							location.host
 						}/metrics/ws`
 					: "wss://video.dcote.net/metrics-api/metrics/ws";
+			const activeViewerPresence = {
+				reconnectAttempt: 0,
+				reconnectTimerId: null,
+				shouldConnect: false,
+				socket: null,
+			};
 
-			function sendJsonMetric(path, payload) {
+			function clearActiveViewerReconnectTimer() {
+				if (!activeViewerPresence.reconnectTimerId) return;
+				clearTimeout(activeViewerPresence.reconnectTimerId);
+				activeViewerPresence.reconnectTimerId = null;
+			}
+
+			function scheduleActiveViewerReconnect() {
+				if (
+					!activeViewerPresence.shouldConnect
+					|| activeViewerPresence.reconnectTimerId
+				) {
+					return;
+				}
+				const delay = Math.min(
+					30000,
+					1000 * 2 ** Math.min(activeViewerPresence.reconnectAttempt, 5),
+				);
+				activeViewerPresence.reconnectAttempt += 1;
+				activeViewerPresence.reconnectTimerId = setTimeout(() => {
+					activeViewerPresence.reconnectTimerId = null;
+					connectActiveViewerPresence();
+				}, delay);
+			}
+
+			function connectActiveViewerPresence() {
+				if (!activeViewerPresence.shouldConnect) return;
+				if (
+					activeViewerPresence.socket
+					&& (
+						activeViewerPresence.socket.readyState === WebSocket.OPEN
+						|| activeViewerPresence.socket.readyState ===
+							WebSocket.CONNECTING
+					)
+				) {
+					return;
+				}
+
+				let socket;
 				try {
-					const data = JSON.stringify(payload);
-					const url = `${backendUrl}/metrics/${path}`;
-					if (typeof navigator.sendBeacon === "function") {
-						const blob = new Blob([data], { type: "application/json" });
-						return navigator.sendBeacon(url, blob);
-					}
+					socket = new WebSocket(websocketUrl);
+				} catch {
+					scheduleActiveViewerReconnect();
+					return;
+				}
+				activeViewerPresence.socket = socket;
+				socket.addEventListener("open", () => {
+					if (activeViewerPresence.socket !== socket) return;
+					activeViewerPresence.reconnectAttempt = 0;
+				});
+				socket.addEventListener("close", () => {
+					if (activeViewerPresence.socket !== socket) return;
+					activeViewerPresence.socket = null;
+					scheduleActiveViewerReconnect();
+				});
+				socket.addEventListener("error", () => socket.close());
+			}
 
-					fetch(url, {
-						method: "POST",
-						headers: { "Content-Type": "application/json" },
-						body: data,
-						keepalive: true,
-					}).catch(() => {});
+			function setActiveViewerPresence(active) {
+				activeViewerPresence.shouldConnect = active;
+				if (active) {
+					connectActiveViewerPresence();
+					return;
+				}
+
+				clearActiveViewerReconnectTimer();
+				activeViewerPresence.reconnectAttempt = 0;
+				const socket = activeViewerPresence.socket;
+				activeViewerPresence.socket = null;
+				if (
+					socket
+					&& (
+						socket.readyState === WebSocket.OPEN
+						|| socket.readyState === WebSocket.CONNECTING
+					)
+				) {
+					socket.close();
+				}
+			}
+
+			const METRIC_RETRY_QUEUE_KEY = "dcote.metrics.pending.v1";
+			const METRIC_RETRY_QUEUE_LIMIT = 100;
+			const METRIC_RETRY_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+			let metricRetryFlushPromise = null;
+
+			function readMetricRetryQueue() {
+				try {
+					const value = JSON.parse(
+						localStorage.getItem(METRIC_RETRY_QUEUE_KEY) || "[]",
+					);
+					if (!Array.isArray(value)) return [];
+					const oldestAllowed = Date.now() - METRIC_RETRY_MAX_AGE_MS;
+					return value.filter(
+						(item) =>
+							item
+							&& typeof item.path === "string"
+							&& typeof item.payload?.eventId === "string"
+							&& Number(item.queuedAt) >= oldestAllowed,
+					);
+				} catch {
+					return [];
+				}
+			}
+			function writeMetricRetryQueue(queue) {
+				try {
+					if (queue.length === 0) {
+						localStorage.removeItem(METRIC_RETRY_QUEUE_KEY);
+					} else {
+						localStorage.setItem(
+							METRIC_RETRY_QUEUE_KEY,
+							JSON.stringify(queue.slice(-METRIC_RETRY_QUEUE_LIMIT)),
+						);
+					}
 					return true;
 				} catch {
 					return false;
 				}
 			}
+			function enqueueMetricRetry(path, payload) {
+				if (typeof payload?.eventId !== "string") return false;
+				const queue = readMetricRetryQueue();
+				const duplicate = queue.some(
+					(item) =>
+						item.path === path
+						&& item.payload.eventId === payload.eventId,
+				);
+				if (!duplicate) {
+					queue.push({ path, payload, queuedAt: Date.now() });
+				}
+				return writeMetricRetryQueue(queue);
+			}
+			function acknowledgeMetricRetry(path, eventId) {
+				if (typeof eventId !== "string") return;
+				const queue = readMetricRetryQueue().filter(
+					(item) =>
+						item.path !== path
+						|| item.payload.eventId !== eventId,
+				);
+				writeMetricRetryQueue(queue);
+			}
+			async function postJsonMetric(path, payload) {
+				const response = await fetch(`${backendUrl}/metrics/${path}`, {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify(payload),
+					keepalive: true,
+				});
+				if (!response.ok) {
+					throw new Error(`Metric request failed: ${response.status}`);
+				}
+				acknowledgeMetricRetry(path, payload.eventId);
+			}
+			function flushMetricRetryQueue() {
+				if (
+					metricRetryFlushPromise
+					|| document.visibilityState === "hidden"
+					|| navigator.onLine === false
+				) {
+					return metricRetryFlushPromise;
+				}
 
-			const viewingTime = { watchedSeconds: 0, startTime: null };
+				metricRetryFlushPromise = (async () => {
+					for (const item of readMetricRetryQueue()) {
+						try {
+							await postJsonMetric(item.path, item.payload);
+						} catch {
+							// Событие остаётся в очереди до следующего подключения.
+						}
+					}
+				})().finally(() => {
+					metricRetryFlushPromise = null;
+				});
+				return metricRetryFlushPromise;
+			}
+			function sendJsonMetric(path, payload) {
+				try {
+					const data = JSON.stringify(payload);
+					const url = `${backendUrl}/metrics/${path}`;
+					const retryQueued = enqueueMetricRetry(path, payload);
+					if (
+						document.visibilityState === "hidden"
+						&& typeof navigator.sendBeacon === "function"
+					) {
+						const blob = new Blob([data], { type: "application/json" });
+						return navigator.sendBeacon(url, blob) || retryQueued;
+					}
+
+					postJsonMetric(path, payload).catch(() => {});
+					return true;
+				} catch {
+					return false;
+				}
+			}
+			window.addEventListener("online", flushMetricRetryQueue);
+			flushMetricRetryQueue();
+			function createMetricEventId(metric) {
+				const randomPart =
+					typeof globalThis.crypto?.randomUUID === "function"
+						? globalThis.crypto.randomUUID()
+						: `${Date.now().toString(36)}-${Math.random()
+							.toString(36)
+							.slice(2)}`;
+				return `${metric}:${randomPart}`;
+			}
+
+			// Метрики просмотра специально считаются на клиенте: сервер получает только
+			// агрегируемые события после порога, без постоянного стрима прогресса.
+			const viewingTime = {
+				activeStartedAt: null,
+				eventId: createMetricEventId("viewing-time"),
+				reported: false,
+				watchedMilliseconds: 0,
+			};
 			const viewStartedMetric = {
+				eventId: createMetricEventId("view-started"),
 				sent: false,
-				thresholdSeconds: 30,
+				thresholdSeconds: VIEW_METRIC_THRESHOLD_SECONDS,
 				timerId: null,
 			};
 			const viewLabelsMetric = {
 				sentKey: null,
 			};
+			function canTrackPlayback() {
+				return Boolean(
+					metricVideo
+					&& !metricVideo.paused
+					&& !metricVideo.ended
+					&& !metricVideo.seeking
+					&& metricVideo.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA
+					&& document.visibilityState === "visible",
+				);
+			}
 			function initViewingTime() {
-				if (!viewingTime.startTime) {
-					viewingTime.startTime = Date.now();
+				if (!canTrackPlayback()) return;
+				if (viewingTime.activeStartedAt === null) {
+					viewingTime.activeStartedAt = performance.now();
 				}
+				setActiveViewerPresence(true);
 				scheduleViewStartedMetricCheck();
 			}
 			function saveViewingTime() {
-				if (viewingTime.startTime) {
-					let dif = Math.floor(
-						(Date.now() - viewingTime.startTime) / 1000,
+				if (viewingTime.activeStartedAt !== null) {
+					viewingTime.watchedMilliseconds += Math.max(
+						0,
+						performance.now() - viewingTime.activeStartedAt,
 					);
-					viewingTime.watchedSeconds += dif;
-					viewingTime.startTime = null;
+					viewingTime.activeStartedAt = null;
 				}
+				setActiveViewerPresence(false);
 				updateViewStartedMetricState();
 			}
 			function getViewingTimeSeconds() {
-				const activeSeconds = viewingTime.startTime
-					? Math.floor((Date.now() - viewingTime.startTime) / 1000)
+				const activeMilliseconds = viewingTime.activeStartedAt !== null
+					? Math.max(0, performance.now() - viewingTime.activeStartedAt)
 					: 0;
-				return viewingTime.watchedSeconds + activeSeconds;
+				return Math.floor(
+					(viewingTime.watchedMilliseconds + activeMilliseconds) / 1000,
+				);
 			}
 			const metricDatas = {
 				season: null,
@@ -543,10 +758,13 @@
 			const subtitleMetric = {
 				activeSeconds: 0,
 				activeStartedAt: null,
+				eventId: createMetricEventId("subtitles"),
 				sent: false,
-				thresholdSeconds: 30,
+				thresholdSeconds: VIEW_METRIC_THRESHOLD_SECONDS,
 				timerId: null,
 			};
+			// VTT и ASS идут разными рендерами: Shaka управляет VTT, а JASSUB рисует ASS.
+			// Все синхронизации ниже нужны, чтобы при выборе дорожек не показывать оба слоя.
 			function positionUnpositionedVttCues(cues) {
 				for (const cue of cues) {
 					const hasRegion = Boolean(cue.region?.id);
@@ -647,6 +865,8 @@
 					.filter(Boolean)
 					.join(" | ");
 			}
+			// ASS-стили правятся до передачи в JASSUB: так нижние субтитры можно поднять
+			// без ручного редактирования исходных .ass файлов под каждый эпизод.
 			function raiseBottomAssStyles(subContent, bottomMarginPercent) {
 				const percent = Math.min(
 					40,
@@ -940,6 +1160,8 @@
 					updateSubtitleDebugLabel(player);
 				}
 			}
+			// Всё ниже отвечает только за телеметрию плеера. Визуальное состояние UI
+			// от этих функций зависеть не должно.
 			function normalizeMetricLabel(value) {
 				if (typeof value !== "string") return null;
 				const label = value.trim().replace(/\s+/g, " ");
@@ -964,15 +1186,15 @@
 				);
 				return normalizeMetricLabel(variantTrack?.label);
 			}
-			function updateSelectedVoice(player) {
-				const voice = getSelectedVoice(player);
-				if (voice) {
-					metricDatas.voice = voice;
-					sendViewLabelsMetric();
-				}
+			function updateSelectedVoice(player, allowUnknown = false) {
+				const voice =
+					getSelectedVoice(player) || (allowUnknown ? "Unknown" : null);
+				if (!voice || metricDatas.voice === voice) return;
+				metricDatas.voice = voice;
+				sendViewLabelsMetric();
 			}
 			function initAudioMetricTracking(player) {
-				const update = () => updateSelectedVoice(player);
+				const update = () => updateSelectedVoice(player, true);
 				["trackschanged", "variantchanged", "audiotrackchanged"].forEach(
 					(eventName) => {
 						player.addEventListener(eventName, update);
@@ -981,6 +1203,13 @@
 				update();
 			}
 			function sendViewLabelsMetric() {
+				if (
+					!metricDatas.season
+					|| !metricDatas.episode
+					|| !metricDatas.voice
+				) {
+					return;
+				}
 				const key = JSON.stringify(metricDatas);
 				if (viewLabelsMetric.sentKey === key) return;
 
@@ -1001,15 +1230,16 @@
 				if (seconds < viewStartedMetric.thresholdSeconds) return;
 
 				clearViewStartedMetricTimer();
-				updateSelectedVoice(metricPlayer);
+				updateSelectedVoice(metricPlayer, true);
 
 				const queued = sendJsonMetric("view-started", {
+					eventId: viewStartedMetric.eventId,
 					seconds,
 					...metricDatas,
 				});
 				if (queued) {
 					viewStartedMetric.sent = true;
-				} else if (viewingTime.startTime) {
+				} else if (viewingTime.activeStartedAt !== null) {
 					viewStartedMetric.timerId = setTimeout(
 						updateViewStartedMetricState,
 						5000,
@@ -1018,7 +1248,12 @@
 			}
 			function scheduleViewStartedMetricCheck() {
 				clearViewStartedMetricTimer();
-				if (viewStartedMetric.sent || !viewingTime.startTime) return;
+				if (
+					viewStartedMetric.sent
+					|| viewingTime.activeStartedAt === null
+				) {
+					return;
+				}
 
 				const remainingMs = Math.max(
 					0,
@@ -1057,8 +1292,8 @@
 				return textTracks.some((track) => track.mode === "showing");
 			}
 			function getSubtitleMetricSeconds() {
-				const activeSeconds = subtitleMetric.activeStartedAt
-					? (Date.now() - subtitleMetric.activeStartedAt) / 1000
+				const activeSeconds = subtitleMetric.activeStartedAt !== null
+					? (performance.now() - subtitleMetric.activeStartedAt) / 1000
 					: 0;
 				return subtitleMetric.activeSeconds + activeSeconds;
 			}
@@ -1073,6 +1308,7 @@
 				clearSubtitleMetricTimer();
 
 				const queued = sendJsonMetric("subtitles", {
+					eventId: subtitleMetric.eventId,
 					seconds: Math.floor(getSubtitleMetricSeconds()),
 					season: metricDatas.season,
 					episode: metricDatas.episode,
@@ -1088,7 +1324,10 @@
 			}
 			function scheduleSubtitleMetricCheck() {
 				clearSubtitleMetricTimer();
-				if (subtitleMetric.sent || !subtitleMetric.activeStartedAt) {
+				if (
+					subtitleMetric.sent
+					|| subtitleMetric.activeStartedAt === null
+				) {
 					return;
 				}
 
@@ -1106,17 +1345,15 @@
 				if (subtitleMetric.sent) return;
 
 				const shouldTrack =
-					metricVideo &&
-					!metricVideo.paused &&
-					!metricVideo.ended &&
-					document.visibilityState === "visible" &&
-					areSubtitlesVisible(metricPlayer, metricVideo);
+					viewingTime.activeStartedAt !== null
+					&& metricVideo
+					&& areSubtitlesVisible(metricPlayer, metricVideo);
 
-				if (shouldTrack && !subtitleMetric.activeStartedAt) {
-					subtitleMetric.activeStartedAt = Date.now();
+				if (shouldTrack && subtitleMetric.activeStartedAt === null) {
+					subtitleMetric.activeStartedAt = performance.now();
 				}
 
-				if (!shouldTrack && subtitleMetric.activeStartedAt) {
+				if (!shouldTrack && subtitleMetric.activeStartedAt !== null) {
 					subtitleMetric.activeSeconds = getSubtitleMetricSeconds();
 					subtitleMetric.activeStartedAt = null;
 				}
@@ -1136,7 +1373,15 @@
 				["texttrackvisibility", "trackschanged"].forEach((eventName) => {
 					player.addEventListener(eventName, update);
 				});
-				["play", "playing", "pause", "ended"].forEach((eventName) => {
+				[
+					"playing",
+					"pause",
+					"waiting",
+					"stalled",
+					"seeking",
+					"seeked",
+					"ended",
+				].forEach((eventName) => {
 					video.addEventListener(eventName, update);
 				});
 				if (video.textTracks?.addEventListener) {
@@ -1158,59 +1403,56 @@
 				metricDatas.episode = episode;
 				metricDatas.voice = null;
 				viewStartedMetric.sent = false;
+				viewStartedMetric.eventId = createMetricEventId("view-started");
 				clearViewStartedMetricTimer();
 				viewLabelsMetric.sentKey = null;
-				viewingTime.watchedSeconds = 0;
-				viewingTime.startTime = null;
-				sendViewLabelsMetric();
+				viewingTime.watchedMilliseconds = 0;
+				viewingTime.activeStartedAt = null;
+				viewingTime.eventId = createMetricEventId("viewing-time");
+				viewingTime.reported = false;
+				subtitleMetric.activeSeconds = 0;
+				subtitleMetric.activeStartedAt = null;
+				subtitleMetric.eventId = createMetricEventId("subtitles");
+				subtitleMetric.sent = false;
+				clearSubtitleMetricTimer();
 			}
 			function flushViewingTimeMetric() {
 				saveViewingTime();
 				updateSubtitleMetricState();
-				updateSelectedVoice(metricPlayer);
+				updateSelectedVoice(metricPlayer, true);
 				sendViewStartedMetric();
 
-				if (viewingTime.watchedSeconds < 30) return;
-
-				const queued = sendJsonMetric("viewing-time", {
-					seconds: viewingTime.watchedSeconds,
-					...metricDatas,
-				});
-				if (queued) viewingTime.watchedSeconds = 0;
-			}
-			document.addEventListener("visibilitychange", function () {
-				if (document.visibilityState === "hidden") {
-					flushViewingTimeMetric();
+				const seconds = getViewingTimeSeconds();
+				if (
+					viewingTime.reported
+					|| seconds < VIEW_METRIC_THRESHOLD_SECONDS
+				) {
 					return;
 				}
 
-				if (
-					metricVideo &&
-					!metricVideo.paused &&
-					!metricVideo.ended
-				) {
-					initViewingTime();
+				const queued = sendJsonMetric("viewing-time", {
+					eventId: viewingTime.eventId,
+					seconds,
+					...metricDatas,
+				});
+				if (queued) viewingTime.reported = true;
+			}
+			document.addEventListener("visibilitychange", function () {
+				if (document.visibilityState === "hidden") {
+					saveViewingTime();
+					updateSubtitleMetricState();
+					return;
 				}
+
+				flushMetricRetryQueue();
+				initViewingTime();
 				updateSubtitleMetricState();
 			});
-			window.addEventListener("pagehide", flushViewingTimeMetric);
-			//TODO: разделить
-			const ws = new WebSocket(websocketUrl);
-			function initWebSocket(ws) {
-				ws.onopen = () => {
-					console.log("WS подключён");
-				};
-
-				ws.onmessage = (msg) => {
-					//const data = JSON.parse(msg.data);
-					//console.log("Сервер ответил:", data);
-				};
-
-				ws.onclose = () => {
-					console.log("WS отключён");
-				};
-			}
-			initWebSocket(ws);
+			window.addEventListener("pagehide", (event) => {
+				saveViewingTime();
+				updateSubtitleMetricState();
+				if (!event.persisted) flushViewingTimeMetric();
+			});
 			//
 			function onError(error) {
 				console.error(
@@ -1266,12 +1508,14 @@
 					},
 				});
 
-				video.addEventListener("play", () => {
-					initViewingTime();
-				});
-
-				video.addEventListener("pause", () => {
+				video.addEventListener("playing", initViewingTime);
+				["pause", "waiting", "stalled", "seeking"].forEach(
+					(eventName) => video.addEventListener(eventName, saveViewingTime),
+				);
+				video.addEventListener("seeked", initViewingTime);
+				video.addEventListener("ended", () => {
 					saveViewingTime();
+					flushViewingTimeMetric();
 				});
 				player.addEventListener("error", (e) => onError(e.detail));
 
@@ -1337,6 +1581,8 @@
 					seekBarColors: { played: "rgb(224, 11, 82)" },
 				});
 
+				// Zoom не должен вмешиваться в обычный desktop-режим: колесо работает
+				// только в fullscreen, а touch-устройства получают pinch/pan жесты всегда.
 				const zoomState = {
 					scale: 1,
 					coverScale: 1,
@@ -1973,6 +2219,8 @@
 
 				const localization = controls.getLocalization();
 				const RU = "ru";
+				// Локализацию Shaka держим рядом с настройкой UI, чтобы новые кнопки
+				// не оставались на английском по умолчанию.
 				localization.insert(
 					RU,
 					new Map([
@@ -1997,6 +2245,8 @@
 				);
 				localization.changeLocale([RU]);
 
+				// Горячие клавиши не должны перехватываться, когда пользователь вводит текст
+				// в системных меню Shaka или сторонних элементах страницы.
 				window.addEventListener("keydown", (e) => {
 					if (
 						["INPUT", "SELECT", "TEXTAREA"].includes(

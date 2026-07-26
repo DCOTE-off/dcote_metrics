@@ -1,6 +1,8 @@
 import client from "prom-client";
 
 const register = new client.Registry();
+const VIDEO_LABELS = ["country", "season", "episode", "voice"];
+const SITE_PAGE_LABELS = ["page"];
 
 const activeViewers = new client.Gauge({
 	name: "active_viewers",
@@ -10,15 +12,16 @@ const activeViewers = new client.Gauge({
 
 const viewingDuration = new client.Histogram({
 	name: "viewing_duration_seconds",
-	help: "Длительность просмотра",
-	labelNames: ["country", "season", "episode", "voice"],
+	help: "Completed playback session duration in active playback seconds",
+	labelNames: VIDEO_LABELS,
+	buckets: [30, 60, 120, 300, 600, 1200, 1800, 3600],
 	registers: [register],
 });
 
 const videoViews = new client.Counter({
 	name: "video_views_total",
 	help: "Video views after 30 seconds of playback",
-	labelNames: ["country", "season", "episode", "voice"],
+	labelNames: VIDEO_LABELS,
 	registers: [register],
 });
 
@@ -32,21 +35,21 @@ const subtitlesEnabled = new client.Counter({
 const activeSiteTabs = new client.Gauge({
 	name: "active_site_tabs",
 	help: "Currently open site tabs by page",
-	labelNames: ["page"],
+	labelNames: SITE_PAGE_LABELS,
 	registers: [register],
 });
 
 const activeSiteSessions = new client.Gauge({
 	name: "active_site_sessions",
 	help: "Currently active browser sessions by page",
-	labelNames: ["page"],
+	labelNames: SITE_PAGE_LABELS,
 	registers: [register],
 });
 
 const activeSiteUsers = new client.Gauge({
 	name: "active_site_users",
-	help: "Currently active registered browser sessions by page",
-	labelNames: ["page"],
+	help: "Currently active registered users by page",
+	labelNames: SITE_PAGE_LABELS,
 	registers: [register],
 });
 
@@ -64,7 +67,7 @@ const activeSiteSessionsGlobal = new client.Gauge({
 
 const activeSiteUsersGlobal = new client.Gauge({
 	name: "active_site_users_global",
-	help: "Currently active registered browser sessions across all pages",
+	help: "Currently active registered users across all pages",
 	registers: [register],
 });
 
@@ -77,41 +80,15 @@ const siteVisits = new client.Counter({
 const sitePageVisits = new client.Counter({
 	name: "site_page_visits_total",
 	help: "Website page visits counted by browser tab",
-	labelNames: ["page"],
+	labelNames: SITE_PAGE_LABELS,
 	registers: [register],
 });
 
-function initTestSeedDatas() {
-	const datas = [
-		{ country: "KZ", season: 1, episode: 3, voice: "DUB" },
-		{ country: "KZ", season: 2, episode: 3, voice: "DUB" },
-		{ country: "RU", season: 1, episode: 5, voice: "SUB" },
-		{ country: "BG", season: 2, episode: 6, voice: "DUB" },
-		{ country: "SK", season: 3, episode: 1, voice: "DUB" },
-		{ country: "KZ", season: 3, episode: 5, voice: "DUB" },
-		{ country: "KZ", season: 1, episode: 3, voice: "DUB" },
-		{ country: "KZ", season: 1, episode: 3, voice: "DUB" },
-		{ country: "KZ", season: 1, episode: 3, voice: "DUB" },
-		{ country: "KZ", season: 1, episode: 3, voice: "DUB" },
-	];
-	datas.forEach((el) => {
-		console.log(el);
-		viewingDuration.observe(
-			{
-				country: el.country ? el.country : "Другие",
-				season: el.season ?? "Неизвестный",
-				episode: el.episode ?? "Неизвестный",
-				voice: el.voice ?? "Неизвестный",
-			},
-			Math.floor(Math.random() * 60),
-		);
-	});
-}
-//initTestSeedDatas();
 activeViewers.set(0);
 activeSiteTabsGlobal.set(0);
 activeSiteSessionsGlobal.set(0);
 activeSiteUsersGlobal.set(0);
+// Counter нельзя выставить напрямую, поэтому inc(0) заранее показывает ряд в /metrics.
 siteVisits.inc(0);
 
 export {

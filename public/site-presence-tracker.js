@@ -25,15 +25,28 @@
 			),
 		);
 	const storageKey = config.storageKey || "dcote_metrics_session_id";
+	const visitStorageKey =
+		config.visitStorageKey || `${storageKey}_active_visit`;
+	const visitTtlMs = 30 * 60 * 1000;
+	const initialPathname = window.location.pathname;
 
 	let websocket = null;
 	let reconnectTimer = null;
 	let heartbeatTimer = null;
 	let sessionId = null;
+	let visitId = null;
+	let visitLastSeenAt = 0;
+	let visitStartedPending = false;
+	let currentPage = null;
+	let pageViewId = createId("page-view");
+	let pageViewStartedPending = true;
 	let pageIsActive = true;
 	let reconnectAttempt = 0;
 	const tabId = createId("tab");
 
+	// sessionId идентифицирует браузерный профиль и разделяется между вкладками.
+	// visitId меняется после 30 минут без активности, tabId относится к одной вкладке,
+	// а pageViewId — к одной загрузке или SPA-странице.
 	function createId(prefix) {
 		if (window.crypto && typeof window.crypto.randomUUID === "function") {
 			return `${prefix}-${window.crypto.randomUUID()}`;
@@ -48,18 +61,65 @@
 		if (sessionId) return sessionId;
 
 		try {
-			const existing = window.sessionStorage.getItem(storageKey);
+			const existing = window.localStorage.getItem(storageKey);
 			if (existing) {
 				sessionId = existing;
 				return sessionId;
 			}
 
 			sessionId = createId("session");
-			window.sessionStorage.setItem(storageKey, sessionId);
+			window.localStorage.setItem(storageKey, sessionId);
+			sessionId = window.localStorage.getItem(storageKey) || sessionId;
 			return sessionId;
 		} catch {
-			sessionId = createId("session");
-			return sessionId;
+			try {
+				const existing = window.sessionStorage.getItem(storageKey);
+				sessionId = existing || createId("session");
+				window.sessionStorage.setItem(storageKey, sessionId);
+				return sessionId;
+			} catch {
+				sessionId = createId("session");
+				return sessionId;
+			}
+		}
+	}
+
+	function getVisitId() {
+		const now = Date.now();
+		try {
+			const stored = JSON.parse(
+				window.localStorage.getItem(visitStorageKey) || "null",
+			);
+			if (
+				stored
+				&& typeof stored.id === "string"
+				&& Number.isFinite(stored.lastSeenAt)
+				&& now - stored.lastSeenAt <= visitTtlMs
+			) {
+				visitId = stored.id;
+				visitLastSeenAt = now;
+				window.localStorage.setItem(
+					visitStorageKey,
+					JSON.stringify({ id: visitId, lastSeenAt: now }),
+				);
+				return visitId;
+			}
+
+			visitId = createId("visit");
+			visitLastSeenAt = now;
+			visitStartedPending = true;
+			window.localStorage.setItem(
+				visitStorageKey,
+				JSON.stringify({ id: visitId, lastSeenAt: now }),
+			);
+			return visitId;
+		} catch {
+			if (!visitId || now - visitLastSeenAt > visitTtlMs) {
+				visitId = createId("visit");
+				visitStartedPending = true;
+			}
+			visitLastSeenAt = now;
+			return visitId;
 		}
 	}
 
@@ -75,6 +135,8 @@
 		return current ? current.src : null;
 	}
 
+	// Если сайт подключил скрипт через /metrics-api, websocket строим от того же префикса.
+	// Это сохраняет работу и за reverse proxy, и при прямом localhost-запуске.
 	function getDefaultWebsocketUrl() {
 		const metricsBaseUrl =
 			config.metricsBaseUrl || config.apiBaseUrl || getInferredMetricsBaseUrl();
@@ -113,7 +175,9 @@
 
 	function getPage() {
 		if (typeof config.getPage === "function") return config.getPage();
-		if (config.page) return config.page;
+		if (config.page && window.location.pathname === initialPathname) {
+			return config.page;
+		}
 		return window.location.pathname;
 	}
 
@@ -126,21 +190,58 @@
 			value = config.getUserId();
 		}
 
-		return value ? "registered" : "anonymous";
+		if (
+			value === null
+			|| value === undefined
+			|| value === false
+			|| value === ""
+		) {
+			return null;
+		}
+		if (value === true) return `session:${getSessionId()}`;
+		return String(value).trim().slice(0, 120) || null;
 	}
 
 	function getPayload() {
+		const nextPage = getPage();
+		if (currentPage === null) {
+			currentPage = nextPage;
+		} else if (nextPage !== currentPage) {
+			currentPage = nextPage;
+			pageViewId = createId("page-view");
+			pageViewStartedPending = true;
+		}
+
 		return {
-			page: getPage(),
+			page: currentPage,
 			userId: getUserId(),
 			sessionId: getSessionId(),
 			tabId,
+			visitId: getVisitId(),
+			visitStarted: visitStartedPending,
+			pageViewId,
+			pageViewStarted: pageViewStartedPending,
 		};
 	}
 
 	function sendPresence() {
 		if (!websocket || websocket.readyState !== WebSocket.OPEN) return;
 		websocket.send(JSON.stringify(getPayload()));
+	}
+
+	function handleServerMessage(event) {
+		try {
+			const response = JSON.parse(event.data);
+			if (!response?.ok) return;
+			if (response.visitAcknowledged === visitId) {
+				visitStartedPending = false;
+			}
+			if (response.pageViewAcknowledged === pageViewId) {
+				pageViewStartedPending = false;
+			}
+		} catch {
+			// Presence remains best-effort; the next heartbeat retries pending events.
+		}
 	}
 
 	function clearReconnectTimer() {
@@ -164,6 +265,10 @@
 		return exponentialDelay + Math.floor(Math.random() * reconnectJitterMs);
 	}
 
+	function isCurrentWebsocket(socket) {
+		return socket === websocket;
+	}
+
 	function scheduleReconnect() {
 		if (!pageIsActive) return;
 		clearReconnectTimer();
@@ -180,29 +285,30 @@
 		clearReconnectTimer();
 		clearHeartbeatTimer();
 
-		let nextWebsocket;
+		let socket;
 		try {
-			nextWebsocket = new WebSocket(websocketUrl);
+			socket = new WebSocket(websocketUrl);
 		} catch {
 			scheduleReconnect();
 			return;
 		}
-
-		websocket = nextWebsocket;
-		nextWebsocket.addEventListener("open", () => {
-			if (websocket !== nextWebsocket) return;
+		websocket = socket;
+		socket.addEventListener("open", () => {
+			if (!isCurrentWebsocket(socket)) return;
 			reconnectAttempt = 0;
 			sendPresence();
 			heartbeatTimer = window.setInterval(sendPresence, heartbeatMs);
 		});
-		nextWebsocket.addEventListener("close", () => {
-			if (websocket === nextWebsocket) scheduleReconnect();
+		socket.addEventListener("message", handleServerMessage);
+		socket.addEventListener("close", () => {
+			if (isCurrentWebsocket(socket)) scheduleReconnect();
 		});
-		nextWebsocket.addEventListener("error", () => {
-			nextWebsocket.close();
+		socket.addEventListener("error", () => {
+			socket.close();
 		});
 	}
 
+	// SPA-переходы не перезагружают страницу, поэтому обновляем page label вручную.
 	function notifyRouteChange() {
 		window.setTimeout(sendPresence, 0);
 	}
@@ -229,6 +335,7 @@
 		websocket = null;
 	}
 
+	// BFCache может вернуть страницу без полной перезагрузки — поднимаем heartbeat заново.
 	function handlePageShow() {
 		pageIsActive = true;
 		if (!websocket || websocket.readyState === WebSocket.CLOSED) connect();

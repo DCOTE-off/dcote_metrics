@@ -4,13 +4,14 @@ import { createReadStream } from "fs";
 import { extname, isAbsolute, join, relative, resolve } from "path";
 import { readFile, stat } from "fs/promises";
 
+import { analyticsPrometheusApi } from "./analytics/prometheusApi.js";
+import { createAnalyticsStore } from "./analytics/store.js";
 import metricsRoute, { createMetricsRuntime } from "./metrics/router.js";
 import { initializeCountryLookup } from "./metrics/maxmind.js";
 import { configureSitePresence } from "./metrics/sitePresence.js";
 import { getRuntimeConfig, loadMetricsAuthToken } from "./runtimeConfig.js";
 
 const jsonError = (error) => ({ error });
-const LEGACY_METRICS_AUTH_TOKEN = "SUPERSECRETPASSWORD";
 
 async function buildApp(options = {}) {
 	const config = options.config || getRuntimeConfig();
@@ -21,17 +22,16 @@ async function buildApp(options = {}) {
 		trustProxy: config.trustProxy,
 		bodyLimit: 16 * 1024,
 	});
+	app.addContentTypeParser(
+		"application/x-www-form-urlencoded",
+		{ parseAs: "string" },
+		(req, body, done) => done(null, new URLSearchParams(body)),
+	);
 
-	const configuredMetricsAuthToken = options.metricsAuthToken ?? await loadMetricsAuthToken(
+	const metricsAuthToken = options.metricsAuthToken ?? await loadMetricsAuthToken(
 		config,
 		(error) => app.log.warn({ error }, "Unable to read metrics auth secret"),
 	);
-	// Keep the existing Prometheus deployment working until the secret rotation
-	// is shipped as a separate infrastructure change.
-	const metricsAuthToken = configuredMetricsAuthToken || LEGACY_METRICS_AUTH_TOKEN;
-	if (!configuredMetricsAuthToken) {
-		app.log.warn("Using the legacy metrics scrape token; rotate it in a dedicated deploy");
-	}
 	const geoDatabaseReady = options.initializeGeoDatabase === false
 		? false
 		: await initializeCountryLookup(
@@ -41,15 +41,70 @@ async function buildApp(options = {}) {
 				"Country database is unavailable; using fallback label",
 			),
 		);
+	const ownsAnalyticsStore = !options.analyticsStore;
+	const analyticsStore = options.analyticsStore || createAnalyticsStore({
+		path: config.analyticsDatabasePath,
+		retentionDays: config.analyticsRetentionDays,
+	});
 
 	configureSitePresence({
 		maxSitePages: config.maxSitePages,
 		maxRecentSessions: config.maxRecentSessions,
 		maxRecentTabs: config.maxRecentTabs,
+		initialPages: analyticsStore
+			.getKnownLabels("sitePage", config.maxSitePages)
+			.map(({ page }) => page),
+		recordVisitEvent: ({ eventId, occurredAtMs }) => analyticsStore.recordEvent({
+			metric: "site_visit",
+			eventId,
+			occurredAtMs,
+		}),
+		recordPageViewEvent: ({ eventId, page, occurredAtMs }) =>
+			analyticsStore.recordEvent({
+				metric: "site_page_visit",
+				eventId,
+				occurredAtMs,
+				labels: { page },
+			}),
+		recordGlobalPresence: ({ tabs, sessions, users, occurredAtMs }) => {
+			analyticsStore.recordPresence("active_site_tabs", tabs, occurredAtMs);
+			analyticsStore.recordPresence(
+				"active_site_sessions",
+				sessions,
+				occurredAtMs,
+			);
+			analyticsStore.recordPresence("active_site_users", users, occurredAtMs);
+		},
 	});
 	const runtime = createMetricsRuntime(config, {
 		metricsAuthToken,
 		getCountry: options.getCountry,
+		analyticsStore,
+	});
+	const analyticsHeartbeatTimer = setInterval(
+		() => analyticsStore.heartbeatPresence(),
+		30 * 1000,
+	);
+	analyticsHeartbeatTimer.unref?.();
+	const analyticsPruneTimer = setInterval(
+		() => analyticsStore.prune(),
+		24 * 60 * 60 * 1000,
+	);
+	analyticsPruneTimer.unref?.();
+	app.addHook("onClose", async () => {
+		clearInterval(analyticsHeartbeatTimer);
+		clearInterval(analyticsPruneTimer);
+		const timestamp = Date.now();
+		for (const metric of [
+			"active_viewers",
+			"active_site_users",
+			"active_site_tabs",
+			"active_site_sessions",
+		]) {
+			analyticsStore.recordPresence(metric, 0, timestamp);
+		}
+		analyticsStore.heartbeatPresence(timestamp);
+		if (ownsAnalyticsStore) analyticsStore.close();
 	});
 
 	app.addHook("onSend", async (req, reply, payload) => {
@@ -72,6 +127,7 @@ async function buildApp(options = {}) {
 		ok: true,
 		metricsConfigured: Boolean(metricsAuthToken),
 		geoDatabaseReady,
+		analyticsReady: true,
 	}));
 
 	const videoPlayerFile = await readFile(publicPath("player.html"));
@@ -218,6 +274,10 @@ async function buildApp(options = {}) {
 	});
 
 	await app.register(fastifyWebsocket);
+	await app.register(analyticsPrometheusApi, {
+		prefix: "/analytics",
+		store: analyticsStore,
+	});
 	await app.register(metricsRoute, { prefix: "/metrics", runtime });
 	await app.register(metricsRoute, {
 		prefix: "/metrics-api/metrics",

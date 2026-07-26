@@ -9,6 +9,7 @@ import {
 } from "./metrics.js";
 import { getCountry as defaultGetCountry } from "./maxmind.js";
 import {
+	heartbeatSitePresenceConnection,
 	registerSitePresenceConnection,
 	touchSitePresenceConnection,
 	unregisterSitePresenceConnection,
@@ -25,8 +26,20 @@ const DEFAULT_UNKNOWN_LABEL = "Unknown";
 const VIDEO_LABEL_NAMES = ["country", "season", "episode", "voice"];
 const SUBTITLE_LABEL_NAMES = ["country", "season", "episode"];
 const MIN_METRIC_SECONDS = 30;
-const MAX_METRIC_SECONDS = 60 * 60;
+const MAX_METRIC_SECONDS = 6 * 60 * 60;
 const MAX_WEBSOCKET_MESSAGE_BYTES = 4096;
+const WEBSOCKET_HEARTBEAT_INTERVAL_MS = 30 * 1000;
+const OVERFLOW_VIDEO_LABELS = Object.freeze({
+	country: "Other",
+	season: "Unknown",
+	episode: "Unknown",
+	voice: "Other",
+});
+const OVERFLOW_SUBTITLE_LABELS = Object.freeze({
+	country: "Other",
+	season: "Unknown",
+	episode: "Unknown",
+});
 
 function parseWebsocketJsonMessage(message) {
 	if (message.length > MAX_WEBSOCKET_MESSAGE_BYTES) {
@@ -89,6 +102,13 @@ function normalizeVoice(value) {
 	return normalized && normalized.length <= 80 ? normalized : null;
 }
 
+function normalizeMetricEventId(value) {
+	if (value === null || value === undefined || value === "") return null;
+	if (typeof value !== "string") return null;
+	const normalized = value.trim();
+	return /^[a-zA-Z0-9:_-]{8,200}$/.test(normalized) ? normalized : null;
+}
+
 function getVideoMetricLabels(req, body, countryLookup) {
 	const country = countryLookup(req.ip);
 	const season = normalizeEpisodePart(body.season);
@@ -116,14 +136,30 @@ function createMetricsRuntime(config, options = {}) {
 	});
 	const videoSeries = createBoundedKeySet(config.maxVideoSeries);
 	const subtitleSeries = createBoundedKeySet(config.maxSubtitleSeries);
+	const initializedDurationSeries = new Set();
+	for (const labels of options.analyticsStore?.getKnownLabels(
+		"video",
+		config.maxVideoSeries,
+	) || []) {
+		videoSeries.accept(getSeriesKey(labels, VIDEO_LABEL_NAMES));
+	}
+	for (const labels of options.analyticsStore?.getKnownLabels(
+		"subtitle",
+		config.maxSubtitleSeries,
+	) || []) {
+		subtitleSeries.accept(getSeriesKey(labels, SUBTITLE_LABEL_NAMES));
+	}
 
 	return {
 		config,
 		metricsAuthToken: options.metricsAuthToken || null,
+		analyticsStore: options.analyticsStore || null,
+		activeViewerCount: 0,
 		getCountry: options.getCountry || defaultGetCountry,
 		httpLimiter,
 		videoSeries,
 		subtitleSeries,
+		initializedDurationSeries,
 		acquireWebsocket(ip) {
 			const ipConnections = connectionsByIp.get(ip) || 0;
 			if (
@@ -158,12 +194,11 @@ function validateIngestionRequest(req, reply, runtime) {
 	return true;
 }
 
-function acceptMetricSeries(reply, labels, runtime, subtitle = false) {
+function getAcceptedMetricLabels(labels, runtime, subtitle = false) {
 	const names = subtitle ? SUBTITLE_LABEL_NAMES : VIDEO_LABEL_NAMES;
 	const series = subtitle ? runtime.subtitleSeries : runtime.videoSeries;
-	if (series.accept(getSeriesKey(labels, names))) return true;
-	reply.code(429).send({ error: "Metric series limit reached" });
-	return false;
+	if (series.accept(getSeriesKey(labels, names))) return labels;
+	return subtitle ? OVERFLOW_SUBTITLE_LABELS : OVERFLOW_VIDEO_LABELS;
 }
 
 function createSocketMessageLimiter(limit, windowMs) {
@@ -195,23 +230,50 @@ function setupWebsocket(socket, req, runtime, handlers = {}) {
 		runtime.config.httpRateWindowMs,
 	);
 	let cleanedUp = false;
+	let socketIsAlive = true;
+	const heartbeatTimer = setInterval(() => {
+		if (cleanedUp) return;
+		if (!socketIsAlive) {
+			socket.terminate();
+			return;
+		}
+		socketIsAlive = false;
+		try {
+			socket.ping();
+		} catch {
+			socket.terminate();
+		}
+	}, WEBSOCKET_HEARTBEAT_INTERVAL_MS);
+	heartbeatTimer.unref?.();
 	const cleanup = () => {
 		if (cleanedUp) return;
 		cleanedUp = true;
+		clearInterval(heartbeatTimer);
 		handlers.onClose?.();
 		runtime.releaseWebsocket(req.ip);
 	};
 
 	handlers.onOpen?.();
+	socket.on("pong", () => {
+		socketIsAlive = true;
+		handlers.onHeartbeat?.();
+	});
 	socket.on("message", (message) => {
+		socketIsAlive = true;
 		if (!allowMessage()) {
 			socket.close(1008, "Message rate limit exceeded");
 			return;
 		}
 		const parsed = parseWebsocketJsonMessage(message);
-		const result = parsed.ok
-			? handlers.onMessage?.(parsed.data) ?? { ok: true }
-			: parsed;
+		let result = parsed;
+		if (parsed.ok) {
+			try {
+				result = handlers.onMessage?.(parsed.data) ?? { ok: true };
+			} catch (error) {
+				req.log.error({ error }, "WebSocket message handler failed");
+				result = { ok: false, error: "Unable to persist metric event" };
+			}
+		}
 		if (socket.readyState === 1) {
 			socket.send(JSON.stringify(result));
 		}
@@ -246,25 +308,90 @@ export default async function metricsRoute(app, options) {
 			if (needsSeconds && seconds === null) {
 				return reply.code(400).send({ error: "Invalid metric duration" });
 			}
+			const suppliedEventId = Object.hasOwn(body, "eventId");
+			const eventId = normalizeMetricEventId(body.eventId);
+			if (suppliedEventId && !eventId) {
+				return reply.code(400).send({ error: "Invalid metric event id" });
+			}
 
 			const subtitle = route === "/subtitles";
 			const metricLabels = subtitle
 				? (({ country, season, episode }) => ({ country, season, episode }))(labels)
 				: labels;
-			if (!acceptMetricSeries(reply, metricLabels, runtime, subtitle)) return;
+			const acceptedLabels = getAcceptedMetricLabels(
+				metricLabels,
+				runtime,
+				subtitle,
+			);
 
-			if (route === "/view-labels") videoViews.inc(metricLabels, 0);
-			else if (route === "/view-started") videoViews.inc(metricLabels);
-			else if (route === "/viewing-time") viewingDuration.observe(metricLabels, seconds);
-			else subtitlesEnabled.inc(metricLabels);
+			if (route === "/view-labels") {
+				videoViews.inc(acceptedLabels, 0);
+				const durationSeriesKey = getSeriesKey(
+					acceptedLabels,
+					VIDEO_LABEL_NAMES,
+				);
+				if (!runtime.initializedDurationSeries.has(durationSeriesKey)) {
+					viewingDuration.zero(acceptedLabels);
+					runtime.initializedDurationSeries.add(durationSeriesKey);
+				}
+				const subtitleLabels = getAcceptedMetricLabels(
+					(({ country, season, episode }) => ({
+						country,
+						season,
+						episode,
+					}))(labels),
+					runtime,
+					true,
+				);
+				subtitlesEnabled.inc(subtitleLabels, 0);
+			} else {
+				const eventMetric = route === "/view-started"
+					? "video_view"
+					: route === "/viewing-time"
+						? "viewing_duration"
+						: "subtitles_enabled";
+				const inserted = runtime.analyticsStore
+					? runtime.analyticsStore.recordEvent({
+						metric: eventMetric,
+						eventId,
+						labels: acceptedLabels,
+						value: route === "/viewing-time" ? seconds : 1,
+					})
+					: true;
+				if (inserted && route === "/view-started") {
+					videoViews.inc(acceptedLabels);
+				} else if (inserted && route === "/viewing-time") {
+					viewingDuration.observe(acceptedLabels, seconds);
+				} else if (inserted) {
+					subtitlesEnabled.inc(acceptedLabels);
+				}
+				return { ok: true, duplicate: !inserted };
+			}
 			return { ok: true };
 		});
 	}
 
 	app.get("/ws", { websocket: true }, (socket, req) => {
 		setupWebsocket(socket, req, runtime, {
-			onOpen: () => activeViewers.inc(),
-			onClose: () => activeViewers.dec(),
+			onOpen: () => {
+				runtime.activeViewerCount += 1;
+				activeViewers.set(runtime.activeViewerCount);
+				runtime.analyticsStore?.recordPresence(
+					"active_viewers",
+					runtime.activeViewerCount,
+				);
+			},
+			onClose: () => {
+				runtime.activeViewerCount = Math.max(
+					0,
+					runtime.activeViewerCount - 1,
+				);
+				activeViewers.set(runtime.activeViewerCount);
+				runtime.analyticsStore?.recordPresence(
+					"active_viewers",
+					runtime.activeViewerCount,
+				);
+			},
 		});
 	});
 
@@ -272,6 +399,7 @@ export default async function metricsRoute(app, options) {
 		const connectionId = registerSitePresenceConnection();
 		setupWebsocket(socket, req, runtime, {
 			onMessage: (payload) => touchSitePresenceConnection(connectionId, payload),
+			onHeartbeat: () => heartbeatSitePresenceConnection(connectionId),
 			onClose: () => unregisterSitePresenceConnection(connectionId),
 		});
 	});
@@ -279,8 +407,10 @@ export default async function metricsRoute(app, options) {
 
 export {
 	createMetricsRuntime,
+	getAcceptedMetricLabels,
 	getValidMetricSeconds,
 	normalizeEpisodePart,
+	normalizeMetricEventId,
 	normalizeVoice,
 	parseWebsocketJsonMessage,
 	tokensMatch,

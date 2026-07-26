@@ -24,8 +24,8 @@ const forceCanvas2DRendererPlugin = {
 					contents: source.replace(
 						rendererSelection,
 						[
-							"        // Transparent WebGL canvases can cover hardware video with black",
-							"        // frames in Chromium. Canvas2D is slower but composites reliably.",
+							"        // Прозрачный WebGL-canvas в Chromium иногда перекрывает",
+							"        // аппаратное видео чёрным кадром. Canvas2D медленнее, но надёжно композитится.",
 							"        this._gpurender = new Canvas2DRenderer();",
 							"        this._gpurender.setCanvas(ctrl);",
 						].join("\n"),

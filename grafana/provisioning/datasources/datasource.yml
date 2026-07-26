@@ -6,3 +6,15 @@ datasources:
       access: proxy
       url: http://prometheus:9090
       isDefault: true
+    - name: Dcote analytics
+      uid: dcote-analytics
+      type: prometheus
+      access: proxy
+      url: http://backend:3000/analytics
+      isDefault: false
+      jsonData:
+          httpMethod: POST
+          manageAlerts: false
+          prometheusType: Prometheus
+          prometheusVersion: 3.0.0
+          timeInterval: 5s
