@@ -1,7 +1,12 @@
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
-var __esm = (fn, res) => function __init() {
-  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+var __esm = (fn, res, err) => function __init() {
+  if (err) throw err[0];
+  try {
+    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+  } catch (e) {
+    throw err = [e], e;
+  }
 };
 var __export = (target, all) => {
   for (var name in all)
@@ -2777,7 +2782,16 @@ var ASSRenderer = class {
     this._defaultFont = data.defaultFont.trim().toLowerCase();
     const _fetch2 = globalThis.fetch;
     globalThis.fetch = (_) => _fetch2(data.wasmUrl);
-    this._gpurender = new Canvas2DRenderer();
+    try {
+      const testCanvas = new OffscreenCanvas(1, 1);
+      if (testCanvas.getContext("webgl2")) {
+        this._gpurender = new Canvas2DRenderer();
+      } else {
+        this._gpurender = testCanvas.getContext("webgl")?.getExtension("ANGLE_instanced_arrays") ? new Canvas2DRenderer() : new Canvas2DRenderer();
+      }
+    } catch {
+      this._gpurender = new Canvas2DRenderer();
+    }
     this._gpurender.setCanvas(ctrl);
     this._loadedInitialFonts = !data.fonts.length;
     const { _malloc, JASSUB } = await jassub_worker_default({ __url: data.wasmUrl, __out: (log) => this._log(log) });

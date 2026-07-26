@@ -26,10 +26,12 @@ test("player measures active playback and reports one completed duration", async
 	assert.match(player, /eventId: viewingTime\.eventId/);
 	assert.match(player, /eventId: viewStartedMetric\.eventId/);
 	assert.match(player, /eventId: subtitleMetric\.eventId/);
-	assert.match(player, /METRIC_RETRY_QUEUE_KEY/);
+	assert.match(player, /METRIC_RETRY_QUEUE_PREFIX/);
+	assert.match(player, /getMetricRetryKey\(path, payload\.eventId\)/);
 	assert.match(player, /enqueueMetricRetry\(path, payload\)/);
 	assert.match(player, /acknowledgeMetricRetry\(path, payload\.eventId\)/);
-	assert.match(player, /window\.addEventListener\("online", flushMetricRetryQueue\)/);
+	assert.match(player, /window\.addEventListener\("online", \(\) =>/);
+	assert.match(player, /flushMetricRetryQueue\(\)/);
 	assert.match(player, /navigator\.sendBeacon\(url, blob\) \|\| retryQueued/);
 	assert.doesNotMatch(player, /if \(queued\) viewingTime\.watchedSeconds = 0/);
 	assert.match(player, /if \(!event\.persisted\) flushViewingTimeMetric\(\)/);
@@ -45,6 +47,27 @@ test("player online presence follows playback and reconnects", async () => {
 		player,
 		/const activeViewersSocket = new WebSocket\(websocketUrl\)/,
 	);
+});
+
+test("player keeps subtitles and telemetry alive across BFCache restores", async () => {
+	const player = await readFile(playerPath, "utf8");
+
+	assert.match(player, /window\.addEventListener\("pageshow", \(event\) =>/);
+	assert.match(player, /if \(!event\.persisted\) return/);
+	assert.match(player, /if \(event\.persisted\) return/);
+	assert.match(player, /syncAssSubtitleVisibility\(metricPlayer\)/);
+	assert.doesNotMatch(player, /renderer\?\._canvas|renderer\._canvas/);
+	assert.match(player, /canvas = document\.createElement\("canvas"\)/);
+	assert.match(player, /new JASSUB\(\{\s*video,\s*canvas,/);
+});
+
+test("player derives production assets from its served route", async () => {
+	const player = await readFile(playerPath, "utf8");
+
+	assert.match(player, /const documentBaseUrl = new URL\("\.", location\.href\)/);
+	assert.match(player, /const inferredBackendUrl = documentBaseUrl\.href/);
+	assert.match(player, /src: url\("fonts\/vag-rounded-next-bold\.woff2"\)/);
+	assert.match(player, /<script defer src="vendor\/shaka\/shaka-player\.ui\.js">/);
 });
 
 test("site tracker shares sessions and acknowledges explicit visit events", async () => {

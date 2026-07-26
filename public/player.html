@@ -7,7 +7,7 @@
 			content="width=device-width, initial-scale=1.0, viewport-fit=cover"
 		/>
 		<title>Player</title>
-		<script src="vendor/shaka/shaka-player.ui.js"></script>
+		<script defer src="vendor/shaka/shaka-player.ui.js"></script>
 		<link
 			rel="stylesheet"
 			href="vendor/shaka/controls.css"
@@ -15,7 +15,7 @@
 		<style>
 			@font-face {
 				font-family: "VAG Rounded Next";
-				src: url("/fonts/vag-rounded-next-bold.woff2") format("woff2");
+				src: url("fonts/vag-rounded-next-bold.woff2") format("woff2");
 				font-weight: 700;
 				font-style: normal;
 				font-display: swap;
@@ -429,16 +429,21 @@
 				</button>
 			</div>
 			<div id="skip-btn">
-				<button id="skip-btn-dismiss">
+				<button
+					id="skip-btn-dismiss"
+					type="button"
+					aria-label="Закрыть предложение пропустить опенинг"
+				>
 					<div id="skip-btn-dismiss-inner">
 						<img
 							style="display: block; font-size: 16px"
 							class="shaka-ui-icon"
 							src="icons/file-x.svg"
+							alt=""
 						/>
 					</div>
 				</button>
-				<button id="skip-btn-action">
+				<button id="skip-btn-action" type="button">
 					<div id="skip-btn-action-inner">Пропустить опенинг</div>
 				</button>
 			</div>
@@ -448,29 +453,40 @@
 			// и локально, и в production под /metrics-api.
 			const playerParams = new URLSearchParams(location.search);
 			const VIEW_METRIC_THRESHOLD_SECONDS = 30;
-			const requestedVttBottomLine = Number(
-				playerParams.get("vtt_bottom_line") || "88",
+			function getNumberParam(name, fallback, min = -Infinity, max = Infinity) {
+				const rawValue = playerParams.get(name);
+				if (rawValue === null || rawValue.trim() === "") return fallback;
+				const value = Number(rawValue);
+				return Number.isFinite(value)
+					? Math.min(max, Math.max(min, value))
+					: fallback;
+			}
+			const defaultVttBottomLine = getNumberParam(
+				"vtt_bottom_line",
+				88,
+				0,
+				100,
 			);
-			const defaultVttBottomLine = Number.isFinite(requestedVttBottomLine)
-				? Math.min(100, Math.max(0, requestedVttBottomLine))
-				: 88;
 			const localHostnamePattern =
 				/^(localhost|127\.0\.0\.1|::1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)$/;
+			const isLocalHost = localHostnamePattern.test(location.hostname);
 			const stage =
 				playerParams.get("stage") ||
-				(localHostnamePattern.test(location.hostname) ? "dev" : "prod");
+				(isLocalHost ? "dev" : "prod");
+			const documentBaseUrl = new URL(".", location.href);
+			const inferredBackendUrl = documentBaseUrl.href.replace(/\/$/, "");
 			const backendUrl =
 				stage === "dev"
 					? location.origin
-					: "https://video.dcote.net/metrics-api";
+					: isLocalHost
+						? "https://video.dcote.net/metrics-api"
+						: inferredBackendUrl;
 			const playerAssetBase = backendUrl;
-			const jassubAssetVersion = "canvas2d-1";
-			const websocketUrl =
-				stage === "dev"
-					? `${location.protocol === "https:" ? "wss" : "ws"}://${
-							location.host
-						}/metrics/ws`
-					: "wss://video.dcote.net/metrics-api/metrics/ws";
+			const jassubAssetVersion = "canvas2d-2";
+			const websocketEndpoint = new URL(`${backendUrl}/metrics/ws`);
+			websocketEndpoint.protocol =
+				websocketEndpoint.protocol === "https:" ? "wss:" : "ws:";
+			const websocketUrl = websocketEndpoint.href;
 			const activeViewerPresence = {
 				reconnectAttempt: 0,
 				reconnectTimerId: null,
@@ -488,13 +504,15 @@
 				if (
 					!activeViewerPresence.shouldConnect
 					|| activeViewerPresence.reconnectTimerId
+					|| navigator.onLine === false
 				) {
 					return;
 				}
-				const delay = Math.min(
+				const maximumDelay = Math.min(
 					30000,
 					1000 * 2 ** Math.min(activeViewerPresence.reconnectAttempt, 5),
 				);
+				const delay = maximumDelay * (0.75 + Math.random() * 0.5);
 				activeViewerPresence.reconnectAttempt += 1;
 				activeViewerPresence.reconnectTimerId = setTimeout(() => {
 					activeViewerPresence.reconnectTimerId = null;
@@ -557,65 +575,118 @@
 				}
 			}
 
-			const METRIC_RETRY_QUEUE_KEY = "dcote.metrics.pending.v1";
+			const LEGACY_METRIC_RETRY_QUEUE_KEY = "dcote.metrics.pending.v1";
+			const METRIC_RETRY_QUEUE_PREFIX = "dcote.metrics.pending.v2.";
 			const METRIC_RETRY_QUEUE_LIMIT = 100;
 			const METRIC_RETRY_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 			let metricRetryFlushPromise = null;
 
+			function getMetricRetryKey(path, eventId) {
+				return (
+					METRIC_RETRY_QUEUE_PREFIX
+					+ encodeURIComponent(path)
+					+ "."
+					+ encodeURIComponent(eventId)
+				);
+			}
+			function isValidMetricRetry(item, oldestAllowed) {
+				return Boolean(
+					item
+						&& typeof item.path === "string"
+						&& typeof item.payload?.eventId === "string"
+						&& Number(item.queuedAt) >= oldestAllowed,
+				);
+			}
+			function migrateLegacyMetricRetryQueue(oldestAllowed) {
+				const legacyValue = localStorage.getItem(
+					LEGACY_METRIC_RETRY_QUEUE_KEY,
+				);
+				if (!legacyValue) return;
+
+				let legacyQueue;
+				try {
+					legacyQueue = JSON.parse(legacyValue);
+				} catch {
+					localStorage.removeItem(LEGACY_METRIC_RETRY_QUEUE_KEY);
+					return;
+				}
+				if (Array.isArray(legacyQueue)) {
+					for (const item of legacyQueue) {
+						if (!isValidMetricRetry(item, oldestAllowed)) continue;
+						const key = getMetricRetryKey(
+							item.path,
+							item.payload.eventId,
+						);
+						if (localStorage.getItem(key) === null) {
+							localStorage.setItem(key, JSON.stringify(item));
+						}
+					}
+				}
+				localStorage.removeItem(LEGACY_METRIC_RETRY_QUEUE_KEY);
+			}
 			function readMetricRetryQueue() {
 				try {
-					const value = JSON.parse(
-						localStorage.getItem(METRIC_RETRY_QUEUE_KEY) || "[]",
-					);
-					if (!Array.isArray(value)) return [];
-					const oldestAllowed = Date.now() - METRIC_RETRY_MAX_AGE_MS;
-					return value.filter(
-						(item) =>
-							item
-							&& typeof item.path === "string"
-							&& typeof item.payload?.eventId === "string"
-							&& Number(item.queuedAt) >= oldestAllowed,
+					const oldestAllowed =
+						Date.now() - METRIC_RETRY_MAX_AGE_MS;
+					migrateLegacyMetricRetryQueue(oldestAllowed);
+					const keys = Array.from(
+						{ length: localStorage.length },
+						(_, index) => localStorage.key(index),
+					).filter((key) => key?.startsWith(METRIC_RETRY_QUEUE_PREFIX));
+					const queue = [];
+					for (const key of keys) {
+						let item;
+						try {
+							item = JSON.parse(localStorage.getItem(key) || "null");
+						} catch {
+							item = null;
+						}
+						if (!isValidMetricRetry(item, oldestAllowed)) {
+							localStorage.removeItem(key);
+							continue;
+						}
+						queue.push(item);
+					}
+					return queue.sort(
+						(left, right) =>
+							Number(left.queuedAt) - Number(right.queuedAt),
 					);
 				} catch {
 					return [];
 				}
 			}
-			function writeMetricRetryQueue(queue) {
+			function enqueueMetricRetry(path, payload) {
+				if (typeof payload?.eventId !== "string") return false;
 				try {
-					if (queue.length === 0) {
-						localStorage.removeItem(METRIC_RETRY_QUEUE_KEY);
-					} else {
+					const key = getMetricRetryKey(path, payload.eventId);
+					if (localStorage.getItem(key) === null) {
 						localStorage.setItem(
-							METRIC_RETRY_QUEUE_KEY,
-							JSON.stringify(queue.slice(-METRIC_RETRY_QUEUE_LIMIT)),
+							key,
+							JSON.stringify({ path, payload, queuedAt: Date.now() }),
 						);
+					}
+					const queue = readMetricRetryQueue();
+					const overflow =
+						queue.length - METRIC_RETRY_QUEUE_LIMIT;
+					if (overflow > 0) {
+						for (const item of queue.slice(0, overflow)) {
+							localStorage.removeItem(
+								getMetricRetryKey(item.path, item.payload.eventId),
+							);
+						}
 					}
 					return true;
 				} catch {
 					return false;
 				}
 			}
-			function enqueueMetricRetry(path, payload) {
-				if (typeof payload?.eventId !== "string") return false;
-				const queue = readMetricRetryQueue();
-				const duplicate = queue.some(
-					(item) =>
-						item.path === path
-						&& item.payload.eventId === payload.eventId,
-				);
-				if (!duplicate) {
-					queue.push({ path, payload, queuedAt: Date.now() });
-				}
-				return writeMetricRetryQueue(queue);
-			}
 			function acknowledgeMetricRetry(path, eventId) {
 				if (typeof eventId !== "string") return;
-				const queue = readMetricRetryQueue().filter(
-					(item) =>
-						item.path !== path
-						|| item.payload.eventId !== eventId,
-				);
-				writeMetricRetryQueue(queue);
+				try {
+					localStorage.removeItem(getMetricRetryKey(path, eventId));
+				} catch {
+					// Метрика уже доставлена; недоступный storage не меняет результат.
+				}
 			}
 			async function postJsonMetric(path, payload) {
 				const response = await fetch(`${backendUrl}/metrics/${path}`, {
@@ -670,7 +741,12 @@
 					return false;
 				}
 			}
-			window.addEventListener("online", flushMetricRetryQueue);
+			window.addEventListener("online", () => {
+				flushMetricRetryQueue();
+				if (activeViewerPresence.shouldConnect) {
+					connectActiveViewerPresence();
+				}
+			});
 			flushMetricRetryQueue();
 			function createMetricEventId(metric) {
 				const randomPart =
@@ -744,6 +820,7 @@
 			let metricPlayer = null;
 			let metricVideo = null;
 			const assSubtitles = {
+				canvas: null,
 				renderer: null,
 				language: "ru",
 				ready: false,
@@ -754,6 +831,8 @@
 				resizeObserver: null,
 				resizeTimerId: null,
 				renderedFontLimit: null,
+				styleUpdatePending: false,
+				styleUpdatePromise: null,
 			};
 			const subtitleMetric = {
 				activeSeconds: 0,
@@ -820,7 +899,7 @@
 			}
 			function syncAssSubtitleVisibility(player) {
 				const container = document.getElementById("player-container");
-				const canvas = assSubtitles.renderer?._canvas;
+				const canvas = assSubtitles.canvas;
 				const shouldShow =
 					assSubtitles.ready &&
 					canvas &&
@@ -963,7 +1042,7 @@
 					.find((line) => /^PlayResY\s*:/i.test(line));
 				const playResY = Number(playResYLine?.split(":")[1]) || 360;
 				const displayHeight =
-					renderer._canvas?.getBoundingClientRect().height ||
+					assSubtitles.canvas?.getBoundingClientRect().height ||
 					video.getBoundingClientRect().height;
 				if (!displayHeight) return;
 				const fullscreenElement =
@@ -1020,11 +1099,32 @@
 			function scheduleResponsiveAssStyles(renderer, subContent, video) {
 				clearTimeout(assSubtitles.resizeTimerId);
 				assSubtitles.resizeTimerId = setTimeout(() => {
-					applyResponsiveAssStyles(renderer, subContent, video)
-						.then(() => updateSubtitleDebugLabel(metricPlayer))
+					assSubtitles.styleUpdatePending = true;
+					if (assSubtitles.styleUpdatePromise) return;
+
+					const updatePromise = (async () => {
+						while (
+							assSubtitles.styleUpdatePending
+							&& assSubtitles.renderer === renderer
+						) {
+							assSubtitles.styleUpdatePending = false;
+							await applyResponsiveAssStyles(
+								renderer,
+								subContent,
+								video,
+							);
+						}
+						updateSubtitleDebugLabel(metricPlayer);
+					})()
 						.catch((error) => {
 							console.warn("Unable to resize ASS subtitles.", error);
+						})
+						.finally(() => {
+							if (assSubtitles.styleUpdatePromise === updatePromise) {
+								assSubtitles.styleUpdatePromise = null;
+							}
 						});
+					assSubtitles.styleUpdatePromise = updatePromise;
 				}, 120);
 			}
 			async function raiseBottomAssEventMargins(
@@ -1067,6 +1167,8 @@
 				assUrl,
 				bottomMarginPercent,
 			) {
+				let canvas = null;
+				let renderer = null;
 				try {
 					assSubtitles.status = "loading";
 					assSubtitles.error = null;
@@ -1089,8 +1191,16 @@
 					);
 					const subtitleFontUrl =
 						`${playerAssetBase}/fonts/vag-rounded-next-bold.woff2`;
-					const renderer = new JASSUB({
+					canvas = document.createElement("canvas");
+					canvas.className = "JASSUB";
+					canvas.style.position = "absolute";
+					canvas.style.pointerEvents = "none";
+					canvas.style.visibility = "hidden";
+					canvas.setAttribute("aria-hidden", "true");
+					video.insertAdjacentElement("afterend", canvas);
+					renderer = new JASSUB({
 						video,
+						canvas,
 						subContent,
 						workerUrl:
 							`${playerAssetBase}/vendor/jassub/jassub-worker.js?v=${jassubAssetVersion}`,
@@ -1108,8 +1218,7 @@
 					});
 
 					assSubtitles.renderer = renderer;
-					renderer._canvas.style.visibility = "hidden";
-					renderer._canvas.setAttribute("aria-hidden", "true");
+					assSubtitles.canvas = canvas;
 					await renderer.ready;
 					await applyBottomAssStyleMargin(
 						renderer,
@@ -1148,14 +1257,17 @@
 					assSubtitles.ready = false;
 					assSubtitles.status = "error";
 					assSubtitles.error = String(error?.message || error).slice(0, 120);
-					const renderer = assSubtitles.renderer;
 					assSubtitles.renderer = null;
+					assSubtitles.canvas = null;
 					assSubtitles.resizeObserver?.disconnect();
 					assSubtitles.resizeObserver = null;
 					clearTimeout(assSubtitles.resizeTimerId);
 					assSubtitles.resizeTimerId = null;
+					assSubtitles.styleUpdatePending = false;
 					if (renderer) {
 						await renderer.destroy().catch(() => {});
+					} else {
+						canvas?.remove();
 					}
 					updateSubtitleDebugLabel(player);
 				}
@@ -1453,12 +1565,19 @@
 				updateSubtitleMetricState();
 				if (!event.persisted) flushViewingTimeMetric();
 			});
+			window.addEventListener("pageshow", (event) => {
+				if (!event.persisted) return;
+				flushMetricRetryQueue();
+				initViewingTime();
+				updateSubtitleMetricState();
+				if (metricPlayer) syncAssSubtitleVisibility(metricPlayer);
+			});
 			//
 			function onError(error) {
 				console.error(
 					"Shaka Error:",
-					error.code,
-					error.message || error,
+					error?.code ?? "unknown",
+					error?.message || error,
 				);
 			}
 			async function init() {
@@ -1528,13 +1647,16 @@
 				assSubtitles.language = (params.get("ass_lang") || "ru")
 					.split("-")[0]
 					.toLowerCase();
-				const assBottomMarginPercent = parseFloat(
-					params.get("ass_bottom_margin_percent") || "7",
+				const assBottomMarginPercent = getNumberParam(
+					"ass_bottom_margin_percent",
+					7,
+					0,
+					40,
 				);
 
 				const poster = params.get("poster");
-				const skipStart = parseFloat(params.get("skip_start") || "-1");
-				const skipEnd = parseFloat(params.get("skip_end") || "-1");
+				const skipStart = getNumberParam("skip_start", -1, -1);
+				const skipEnd = getNumberParam("skip_end", -1, -1);
 
 				const showPoster = () => {
 					if (!poster) return;
@@ -1897,19 +2019,27 @@
 					const bounds = container.getBoundingClientRect();
 					requestAnimationFrame(() => {
 						const margin = 12;
-						const left = Math.min(
+						const maximumLeft = Math.max(
+							margin,
 							bounds.width -
 								mobileContextMenu.offsetWidth -
 								margin,
+						);
+						const maximumTop = Math.max(
+							margin,
+							bounds.height -
+								mobileContextMenu.offsetHeight -
+								margin,
+						);
+						const left = Math.min(
+							maximumLeft,
 							Math.max(
 								margin,
 								point.x - bounds.left,
 							),
 						);
 						const top = Math.min(
-							bounds.height -
-								mobileContextMenu.offsetHeight -
-								margin,
+							maximumTop,
 							Math.max(
 								margin,
 								point.y - bounds.top,
@@ -2248,9 +2378,17 @@
 				// Горячие клавиши не должны перехватываться, когда пользователь вводит текст
 				// в системных меню Shaka или сторонних элементах страницы.
 				window.addEventListener("keydown", (e) => {
+					const activeElement = document.activeElement;
 					if (
-						["INPUT", "SELECT", "TEXTAREA"].includes(
-							document.activeElement.tagName,
+						e.defaultPrevented
+						|| e.altKey
+						|| e.ctrlKey
+						|| e.metaKey
+						|| (
+							activeElement instanceof HTMLElement
+							&& activeElement.matches(
+								"input, select, textarea, [contenteditable]",
+							)
 						)
 					)
 						return;
@@ -2407,7 +2545,6 @@
 					}
 					try {
 						await player.load(src);
-						showPoster();
 						initMetricDatas(src);
 						initAudioMetricTracking(player);
 						initSubtitleMetricTracking(player, video);
@@ -2416,12 +2553,16 @@
 					}
 				}
 			}
-			window.addEventListener("pagehide", () => {
+			window.addEventListener("pagehide", (event) => {
+				if (event.persisted) return;
 				assSubtitles.resizeObserver?.disconnect();
 				clearTimeout(assSubtitles.resizeTimerId);
+				assSubtitles.styleUpdatePending = false;
 				assSubtitles.renderer?.destroy().catch(() => {});
 			});
-			document.addEventListener("DOMContentLoaded", init);
+			document.addEventListener("DOMContentLoaded", () => {
+				init().catch(onError);
+			});
 		</script>
 	</body>
 </html>

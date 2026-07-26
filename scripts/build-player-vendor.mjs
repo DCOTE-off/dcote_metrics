@@ -1,5 +1,5 @@
-import { copyFile, mkdir, readFile } from "fs/promises";
-import { join, resolve } from "path";
+import { copyFile, mkdir } from "fs/promises";
+import { dirname, join, resolve } from "path";
 import { build } from "esbuild";
 
 const projectRoot = resolve(import.meta.dirname, "..");
@@ -10,27 +10,22 @@ const forceCanvas2DRendererPlugin = {
 	name: "force-jassub-canvas-2d-renderer",
 	setup(buildContext) {
 		buildContext.onLoad(
-			{ filter: /[\\/]jassub[\\/]dist[\\/]worker[\\/]worker\.js$/ },
-			async ({ path }) => {
-				const source = await readFile(path, "utf8");
-				const rendererSelection =
-					/^        try \{[\s\S]*?^        \}\r?\n        this\._gpurender\.setCanvas\(ctrl\);/m;
-
-				if (!rendererSelection.test(source)) {
-					throw new Error("Unable to locate the JASSUB renderer selection.");
-				}
-
+			{
+				filter:
+					/[\\/]jassub[\\/]dist[\\/]worker[\\/]renderers[\\/]webgl[12]-renderer\.js$/,
+			},
+			({ path }) => {
+				const rendererName = path.includes("webgl2")
+					? "WebGL2Renderer"
+					: "WebGL1Renderer";
 				return {
-					contents: source.replace(
-						rendererSelection,
-						[
-							"        // Прозрачный WebGL-canvas в Chromium иногда перекрывает",
-							"        // аппаратное видео чёрным кадром. Canvas2D медленнее, но надёжно композитится.",
-							"        this._gpurender = new Canvas2DRenderer();",
-							"        this._gpurender.setCanvas(ctrl);",
-						].join("\n"),
-					),
+					// Подменяем только renderer-модули через стабильную границу
+					// сборщика, не переписывая исходный код worker регуляркой.
+					contents:
+						`export { Canvas2DRenderer as ${rendererName} } `
+						+ 'from "./2d-renderer.js";',
 					loader: "js",
+					resolveDir: dirname(path),
 				};
 			},
 		);
