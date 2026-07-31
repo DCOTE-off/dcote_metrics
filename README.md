@@ -6,9 +6,10 @@
 `METRICS_AUTH_TOKEN` на длинную случайную строку. Один и тот же секрет Docker
 передаёт backend и Prometheus через Docker Secret; в образ и Git он не попадает.
 
-По умолчанию backend, Prometheus и Grafana слушают только `127.0.0.1`. Если
-reverse proxy находится на другом сервере, адрес привязки можно осознанно
-изменить через `BACKEND_BIND_ADDRESS`, `PROMETHEUS_BIND_ADDRESS` и
+По умолчанию backend и Grafana доступны reverse proxy на всех интерфейсах,
+как и в предыдущей deployment-конфигурации. Prometheus при этом слушает только
+`127.0.0.1`. Если reverse proxy запущен прямо на Docker-хосте, backend и Grafana можно
+также ограничить до `127.0.0.1` через `BACKEND_BIND_ADDRESS` и
 `GRAFANA_BIND_ADDRESS`.
 
 Проверка перед развёртыванием:
