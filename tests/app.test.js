@@ -35,6 +35,61 @@ test("player and health stay available when optional services are absent", async
 	const player = await app.inject({ method: "GET", url: "/videoplayer" });
 	assert.equal(player.statusCode, 200);
 	assert.doesNotMatch(player.body, /cdn\.jsdelivr\.net/);
+	const playerStyleUrl = player.body.match(
+		/href="(player\.css\?v=[a-f0-9]+)"/,
+	)?.[1];
+	const playerScriptUrl = player.body.match(
+		/src="(player\.js\?v=[a-f0-9]+)"/,
+	)?.[1];
+	const playerSubtitlesScriptUrl = player.body.match(
+		/src="(player-subtitles\.js\?v=[a-f0-9]+)"/,
+	)?.[1];
+	const jassubVersion = player.body.match(
+		/data-jassub-version="([a-f0-9]+)"/,
+	)?.[1];
+	const subtitleFontVersion = player.body.match(
+		/data-subtitle-font-version="([a-f0-9]+)"/,
+	)?.[1];
+	assert.ok(playerStyleUrl);
+	assert.ok(playerScriptUrl);
+	assert.ok(playerSubtitlesScriptUrl);
+	assert.ok(jassubVersion);
+	assert.ok(subtitleFontVersion);
+
+	for (const [url, contentType, marker] of [
+		[`/${playerStyleUrl}`, "text/css", "#player-container"],
+		[
+			`/metrics-api/${playerStyleUrl}`,
+			"text/css",
+			"#player-container",
+		],
+		[`/${playerScriptUrl}`, "application/javascript", "destroyPlayerSession"],
+		[
+			`/metrics-api/${playerScriptUrl}`,
+			"application/javascript",
+			"destroyPlayerSession",
+		],
+		[
+			`/${playerSubtitlesScriptUrl}`,
+			"application/javascript",
+			"syncPresentationTextDisplayer",
+		],
+		[
+			`/metrics-api/${playerSubtitlesScriptUrl}`,
+			"application/javascript",
+			"syncPresentationTextDisplayer",
+		],
+	]) {
+		const asset = await app.inject({ method: "GET", url });
+		assert.equal(asset.statusCode, 200);
+		assert.match(asset.headers["content-type"], new RegExp(contentType));
+		assert.equal(
+			asset.headers["cache-control"],
+			"public, max-age=31536000, immutable",
+		);
+		assert.match(asset.headers.etag, /^"[a-f0-9]{16}"$/);
+		assert.match(asset.body, new RegExp(marker));
+	}
 	assert.equal(
 		(await app.inject({
 			method: "GET",
@@ -42,6 +97,84 @@ test("player and health stay available when optional services are absent", async
 		})).statusCode,
 		200,
 	);
+	const shakaStyle = await app.inject({
+		method: "GET",
+		url: "/vendor/shaka/controls.css",
+	});
+	assert.equal(shakaStyle.statusCode, 200);
+	assert.doesNotMatch(shakaStyle.body, /fonts\.gstatic\.com|fonts\.googleapis\.com/);
+	for (const url of [
+		`/vendor/jassub/jassub.js?v=${jassubVersion}`,
+		`/metrics-api/vendor/jassub/jassub-worker.wasm?v=${jassubVersion}`,
+		`/fonts/vag-rounded-next-bold.woff2?v=${subtitleFontVersion}`,
+	]) {
+		const asset = await app.inject({ method: "GET", url });
+		assert.equal(asset.statusCode, 200);
+		assert.equal(
+			asset.headers["cache-control"],
+			"public, max-age=31536000, immutable",
+		);
+	}
+	const unversionedScript = await app.inject({
+		method: "GET",
+		url: "/player.js",
+	});
+	assert.equal(
+		unversionedScript.headers["cache-control"],
+		"public, max-age=0, must-revalidate",
+	);
+	const mismatchedVendor = await app.inject({
+		method: "GET",
+		url: "/vendor/jassub/jassub.js?v=stale",
+	});
+	assert.equal(
+		mismatchedVendor.headers["cache-control"],
+		"public, max-age=0, must-revalidate",
+	);
+	const notModified = await app.inject({
+		method: "GET",
+		url: "/player.js",
+		headers: { "if-none-match": unversionedScript.headers.etag },
+	});
+	assert.equal(notModified.statusCode, 304);
+	assert.equal(notModified.body, "");
+	const compressedScript = await app.inject({
+		method: "GET",
+		url: `/${playerScriptUrl}`,
+		headers: { "accept-encoding": "gzip" },
+	});
+	assert.equal(compressedScript.headers["content-encoding"], "gzip");
+	assert.equal(compressedScript.headers.vary, "Accept-Encoding");
+	assert.notEqual(
+		compressedScript.headers.etag,
+		unversionedScript.headers.etag,
+	);
+	const crossEncodingValidation = await app.inject({
+		method: "GET",
+		url: `/${playerScriptUrl}`,
+		headers: {
+			"accept-encoding": "identity",
+			"if-none-match": compressedScript.headers.etag,
+		},
+	});
+	assert.equal(crossEncodingValidation.statusCode, 200);
+	const compressedNotModified = await app.inject({
+		method: "GET",
+		url: `/${playerScriptUrl}`,
+		headers: {
+			"accept-encoding": "gzip",
+			"if-none-match": compressedScript.headers.etag,
+		},
+	});
+	assert.equal(compressedNotModified.statusCode, 304);
+	const unacceptableEncoding = await app.inject({
+		method: "GET",
+		url: `/${playerScriptUrl}`,
+		headers: {
+			"accept-encoding": "br;q=0, gzip;q=0, identity;q=0",
+		},
+	});
+	assert.equal(unacceptableEncoding.statusCode, 406);
 	assert.equal(
 		(await app.inject({ method: "GET", url: "/metrics" })).statusCode,
 		503,

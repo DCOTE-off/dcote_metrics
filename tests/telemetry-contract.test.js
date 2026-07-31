@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const playerPath = new URL("../public/player.html", import.meta.url);
+const playerPath = new URL("../public/player.js", import.meta.url);
+const playerSubtitlesPath = new URL(
+	"../public/player-subtitles.js",
+	import.meta.url,
+);
+const playerMarkupPath = new URL("../public/player.html", import.meta.url);
+const playerStylePath = new URL("../public/player.css", import.meta.url);
 const trackerPath = new URL(
 	"../public/site-presence-tracker.js",
 	import.meta.url,
@@ -16,10 +22,20 @@ const websiteDashboardPath = new URL(
 	import.meta.url,
 );
 
-test("player measures active playback and reports one completed duration", async () => {
-	const player = await readFile(playerPath, "utf8");
+async function readPlayerSources() {
+	return (
+		await Promise.all(
+			[playerPath, playerSubtitlesPath].map((path) =>
+				readFile(path, "utf8")
+			),
+		)
+	).join("\n");
+}
 
-	assert.match(player, /video\.addEventListener\("playing", initViewingTime\)/);
+test("player measures active playback and reports one completed duration", async () => {
+	const player = await readPlayerSources();
+
+	assert.match(player, /listen\(video, "playing", initViewingTime\)/);
 	assert.match(player, /\["pause", "waiting", "stalled", "seeking"\]/);
 	assert.match(player, /performance\.now\(\) - viewingTime\.activeStartedAt/);
 	assert.match(player, /viewingTime\.reported/);
@@ -30,15 +46,18 @@ test("player measures active playback and reports one completed duration", async
 	assert.match(player, /getMetricRetryKey\(path, payload\.eventId\)/);
 	assert.match(player, /enqueueMetricRetry\(path, payload\)/);
 	assert.match(player, /acknowledgeMetricRetry\(path, payload\.eventId\)/);
-	assert.match(player, /window\.addEventListener\("online", \(\) =>/);
+	assert.match(player, /listen\(window, "online", \(\) =>/);
 	assert.match(player, /flushMetricRetryQueue\(\)/);
 	assert.match(player, /navigator\.sendBeacon\(url, blob\) \|\| retryQueued/);
 	assert.doesNotMatch(player, /if \(queued\) viewingTime\.watchedSeconds = 0/);
-	assert.match(player, /if \(!event\.persisted\) flushViewingTimeMetric\(\)/);
+	assert.match(
+		player,
+		/if \(event\.persisted\) return;\s*flushViewingTimeMetric\(\);\s*destroyPlayerSession\(\)/,
+	);
 });
 
 test("player online presence follows playback and reconnects", async () => {
-	const player = await readFile(playerPath, "utf8");
+	const player = await readPlayerSources();
 
 	assert.match(player, /setActiveViewerPresence\(true\)/);
 	assert.match(player, /setActiveViewerPresence\(false\)/);
@@ -50,24 +69,123 @@ test("player online presence follows playback and reconnects", async () => {
 });
 
 test("player keeps subtitles and telemetry alive across BFCache restores", async () => {
-	const player = await readFile(playerPath, "utf8");
+	const player = await readPlayerSources();
 
-	assert.match(player, /window\.addEventListener\("pageshow", \(event\) =>/);
+	assert.match(player, /listen\(window, "pageshow", \(event\) =>/);
 	assert.match(player, /if \(!event\.persisted\) return/);
 	assert.match(player, /if \(event\.persisted\) return/);
 	assert.match(player, /syncAssSubtitleVisibility\(metricPlayer\)/);
 	assert.doesNotMatch(player, /renderer\?\._canvas|renderer\._canvas/);
 	assert.match(player, /canvas = document\.createElement\("canvas"\)/);
-	assert.match(player, /new JASSUB\(\{\s*video,\s*canvas,/);
+	assert.match(player, /new JASSUB\(\{\s*canvas,/);
+	assert.doesNotMatch(player, /new JASSUB\(\{\s*video,/);
+});
+
+test("ASS is lazy, always uses VAG and stops rendering while hidden", async () => {
+	const player = await readPlayerSources();
+
+	assert.match(player, /async function ensureAssSubtitlesReady\(\)/);
+	assert.match(
+		player,
+		/selected\s*&&\s*canRender\s*&&\s*assSubtitles\.status === "idle"/,
+	);
+	assert.match(player, /renderer\.manualRender\(metadata\)/);
+	assert.match(player, /cancelVideoFrameCallback\(frameCallbackId\)/);
+	assert.match(
+		player,
+		/typeof video\.requestVideoFrameCallback === "function"/,
+	);
+	assert.match(player, /animationFrameId = requestAnimationFrame/);
+	assert.match(player, /cancelAnimationFrame\(animationFrameId\)/);
+	assert.match(player, /ASS_RENDERER_IDLE_TIMEOUT_MS/);
+	assert.match(player, /queryFonts: false/);
+	assert.match(player, /fonts: \[\]/);
+	assert.match(player, /defaultFont: "vag rounded next"/);
+	assert.doesNotMatch(player, /ass_font|fontUrls/);
+	assert.doesNotMatch(player, /\.renderer\.setEvent\(/);
+	assert.doesNotMatch(player, /\.renderer\.setStyle\(/);
 });
 
 test("player derives production assets from its served route", async () => {
-	const player = await readFile(playerPath, "utf8");
+	const [player, markup, styles] = await Promise.all([
+		readPlayerSources(),
+		readFile(playerMarkupPath, "utf8"),
+		readFile(playerStylePath, "utf8"),
+	]);
 
 	assert.match(player, /const documentBaseUrl = new URL\("\.", location\.href\)/);
 	assert.match(player, /const inferredBackendUrl = documentBaseUrl\.href/);
-	assert.match(player, /src: url\("fonts\/vag-rounded-next-bold\.woff2"\)/);
-	assert.match(player, /<script defer src="vendor\/shaka\/shaka-player\.ui\.js">/);
+	assert.match(player, /playerScriptElement\?\.dataset\.jassubVersion/);
+	assert.match(player, /playerScriptElement\?\.dataset\.subtitleFontVersion/);
+	assert.match(styles, /src: url\("fonts\/vag-rounded-next-bold\.woff2"\)/);
+	assert.match(markup, /<script defer src="vendor\/shaka\/shaka-player\.ui\.js">/);
+	assert.match(markup, /<link rel="stylesheet" href="player\.css" \/>/);
+	assert.match(markup, /<script defer src="player\.js"><\/script>/);
+	assert.match(
+		markup,
+		/<script defer src="player-subtitles\.js"><\/script>/,
+	);
+	assert.doesNotMatch(markup, /<style>|<script>/);
+});
+
+test("player switches text displayers for native presentation modes", async () => {
+	const [player, playerMain, playerSubtitles] = await Promise.all([
+		readPlayerSources(),
+		readFile(playerPath, "utf8"),
+		readFile(playerSubtitlesPath, "utf8"),
+	]);
+
+	assert.match(player, /function getPresentationTextDisplayerMode\(/);
+	assert.match(player, /document\.pictureInPictureElement === video/);
+	assert.match(player, /document\.fullscreenElement === video/);
+	assert.match(player, /new shaka\.text\.NativeTextDisplayer\(player\)/);
+	assert.match(player, /new shaka\.text\.UITextDisplayer\(player\)/);
+	assert.match(
+		playerMain,
+		/configurePresentationTextDisplayerLifecycle\(player, video\)/,
+	);
+	assert.match(
+		playerSubtitles,
+		/function configurePresentationTextDisplayerLifecycle\(player, video\)/,
+	);
+	assert.match(playerSubtitles, /\["connecting", "connect", "disconnect"\]/);
+	assert.match(
+		playerSubtitles,
+		/listen\(document, "fullscreenchange", syncPresentation\)/,
+	);
+});
+
+test("stable subtitle selectors take precedence over language fallback", async () => {
+	const player = await readPlayerSources();
+
+	assert.match(
+		player,
+		/const hasStableSelector = Boolean\([\s\S]*assSubtitles\.trackId \|\| assSubtitles\.label/,
+	);
+	assert.match(player, /if \(hasStableSelector\) return true/);
+});
+
+test("player disposes one session and preserves accessible keyboard controls", async () => {
+	const [player, markup] = await Promise.all([
+		readPlayerSources(),
+		readFile(playerMarkupPath, "utf8"),
+	]);
+
+	assert.match(player, /function destroyPlayerSession\(\)/);
+	assert.match(player, /playerLifecycle\.cleanupTasks\.splice\(0\)\.reverse\(\)/);
+	assert.match(player, /await ui\?\.destroy\?\.\(\)/);
+	assert.match(player, /await player\?\.destroy\?\.\(\)/);
+	assert.match(player, /const MOBILE_ABR_MAX_HEIGHT = 720/);
+	assert.match(player, /const DESKTOP_ABR_MAX_HEIGHT = 1080/);
+	assert.match(player, /const INITIAL_ABR_BANDWIDTH_ESTIMATE = 100_000_000/);
+	assert.match(player, /abr: \{[\s\S]*restrictions: \{\s*maxHeight:/);
+	assert.match(player, /useNetworkInformation: false/);
+	assert.match(player, /button, a,/);
+	assert.match(player, /\[role='menuitem'\]/);
+	assert.match(player, /\[role='slider'\]/);
+	assert.match(markup, /id="skip-btn" class="shaka-no-propagation"/);
+	assert.doesNotMatch(player, /setEnabledShakaControls/);
+	assert.doesNotMatch(player, /const silenceShaka/);
 });
 
 test("site tracker shares sessions and acknowledges explicit visit events", async () => {

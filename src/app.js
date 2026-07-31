@@ -1,6 +1,13 @@
 import Fastify from "fastify";
+import fastifyCompress from "@fastify/compress";
 import fastifyWebsocket from "@fastify/websocket";
-import { createReadStream } from "fs";
+import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
+import {
+	brotliCompressSync,
+	constants as zlibConstants,
+	gzipSync,
+} from "node:zlib";
 import { extname, isAbsolute, join, relative, resolve } from "path";
 import { readFile, stat } from "fs/promises";
 
@@ -12,6 +19,90 @@ import { configureSitePresence } from "./metrics/sitePresence.js";
 import { getRuntimeConfig, loadMetricsAuthToken } from "./runtimeConfig.js";
 
 const jsonError = (error) => ({ error });
+const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
+const REVALIDATE_CACHE_CONTROL = "public, max-age=0, must-revalidate";
+const STATIC_COMPRESSION_THRESHOLD = 1024;
+
+function getContentHash(content) {
+	return createHash("sha256").update(content).digest("hex").slice(0, 16);
+}
+
+function createStaticAsset(body, contentType, version = getContentHash(body)) {
+	const representations = new Map();
+	const addRepresentation = (encoding, representationBody) => {
+		representations.set(encoding, {
+			body: representationBody,
+			etag: `"${getContentHash(representationBody)}"`,
+		});
+	};
+	addRepresentation("identity", body);
+	if (
+		body.length >= STATIC_COMPRESSION_THRESHOLD
+		&& (
+			contentType.startsWith("text/")
+			|| contentType === "application/javascript"
+			|| contentType === "application/wasm"
+			|| contentType === "image/svg+xml"
+		)
+	) {
+		const brotliBody = brotliCompressSync(body, {
+			params: {
+				[zlibConstants.BROTLI_PARAM_QUALITY]: 5,
+			},
+		});
+		const gzipBody = gzipSync(body, { level: 6 });
+		if (brotliBody.length < body.length) {
+			addRepresentation("br", brotliBody);
+		}
+		if (gzipBody.length < body.length) {
+			addRepresentation("gzip", gzipBody);
+		}
+	}
+	return {
+		contentType,
+		representations,
+		version,
+	};
+}
+
+function selectStaticRepresentation(request, asset) {
+	const acceptEncoding = request.headers["accept-encoding"];
+	if (typeof acceptEncoding !== "string" || !acceptEncoding.trim()) {
+		return ["identity", asset.representations.get("identity")];
+	}
+
+	const qualities = new Map();
+	for (const item of acceptEncoding.toLowerCase().split(",")) {
+		const [rawEncoding, ...parameters] = item.trim().split(";");
+		if (!rawEncoding) continue;
+		let quality = 1;
+		for (const parameter of parameters) {
+			const match = parameter.trim().match(/^q=(0(?:\.\d+)?|1(?:\.0+)?)$/);
+			if (match) quality = Number(match[1]);
+		}
+		qualities.set(rawEncoding, quality);
+	}
+	const wildcardQuality = qualities.get("*");
+	const getQuality = (encoding) => {
+		if (qualities.has(encoding)) return qualities.get(encoding);
+		if (encoding === "identity") {
+			return wildcardQuality === 0 ? 0 : 0.001;
+		}
+		return wildcardQuality ?? 0;
+	};
+
+	let selected = null;
+	let selectedQuality = 0;
+	for (const encoding of ["br", "gzip", "identity"]) {
+		const representation = asset.representations.get(encoding);
+		const quality = representation ? getQuality(encoding) : 0;
+		if (quality > selectedQuality) {
+			selected = [encoding, representation];
+			selectedQuality = quality;
+		}
+	}
+	return selected;
+}
 
 async function buildApp(options = {}) {
 	const config = options.config || getRuntimeConfig();
@@ -27,6 +118,10 @@ async function buildApp(options = {}) {
 		{ parseAs: "string" },
 		(req, body, done) => done(null, new URLSearchParams(body)),
 	);
+	await app.register(fastifyCompress, {
+		global: true,
+		threshold: 1024,
+	});
 
 	const metricsAuthToken = options.metricsAuthToken ?? await loadMetricsAuthToken(
 		config,
@@ -130,32 +225,131 @@ async function buildApp(options = {}) {
 		analyticsReady: true,
 	}));
 
-	const videoPlayerFile = await readFile(publicPath("player.html"));
+	const videoPlayerTemplate = await readFile(
+		publicPath("player.html"),
+		"utf8",
+	);
+	const playerStyleTemplate = await readFile(
+		publicPath("player.css"),
+		"utf8",
+	);
+	const playerScriptFile = await readFile(publicPath("player.js"));
+	const playerSubtitlesScriptFile = await readFile(
+		publicPath("player-subtitles.js"),
+	);
 	const subtitleFontFile = await readFile(
 		publicPath("fonts", "vag-rounded-next-bold.woff2"),
 	);
+	const subtitleFontAsset = createStaticAsset(
+		subtitleFontFile,
+		"font/woff2",
+	);
 	const jassubVendorRootPath = publicPath("vendor", "jassub");
-	const jassubVendorAssets = new Map([
+	const jassubVendorAssetTypes = new Map([
 		["jassub.js", "application/javascript"],
 		["jassub-worker.js", "application/javascript"],
 		["jassub-worker.wasm", "application/wasm"],
 		["jassub-worker-modern.wasm", "application/wasm"],
 		["LICENSE", "text/plain"],
 	]);
+	const jassubVendorFiles = new Map(await Promise.all(
+		[...jassubVendorAssetTypes].map(async ([filename, contentType]) => [
+			filename,
+			{
+				body: await readFile(join(jassubVendorRootPath, filename)),
+				contentType,
+			},
+		]),
+	));
+	const jassubVersionHash = createHash("sha256");
+	for (const [filename, asset] of jassubVendorFiles) {
+		jassubVersionHash.update(filename).update("\0").update(asset.body);
+	}
+	const jassubVersion = jassubVersionHash.digest("hex").slice(0, 16);
+	const jassubVendorAssets = new Map(
+		[...jassubVendorFiles].map(([filename, asset]) => [
+			filename,
+			createStaticAsset(asset.body, asset.contentType, jassubVersion),
+		]),
+	);
 	const shakaVendorRootPath = join(
 		projectRoot,
 		"node_modules",
 		"shaka-player",
 		"dist",
 	);
-	const shakaVendorAssets = new Map([
+	const shakaVendorAssetTypes = new Map([
 		["shaka-player.ui.js", "application/javascript"],
 		["controls.css", "text/css"],
 	]);
+	const shakaVendorAssets = new Map(await Promise.all(
+		[...shakaVendorAssetTypes].map(async ([filename, contentType]) => {
+			let body = await readFile(join(shakaVendorRootPath, filename));
+			if (filename === "controls.css") {
+				body = Buffer.from(
+					body.toString("utf8").replace(
+						/@font-face\{font-family:Roboto[^}]*\}/g,
+						"",
+					),
+				);
+			}
+			return [filename, createStaticAsset(body, contentType)];
+		}),
+	));
 	const sitePresenceTrackerFile = await readFile(
 		publicPath("site-presence-tracker.js"),
 	);
 	const fileXIcon = await readFile(publicPath("icons", "file-x.svg"));
+	const fileXIconAsset = createStaticAsset(fileXIcon, "image/svg+xml");
+	const playerStyleFile = Buffer.from(
+		playerStyleTemplate.replace(
+			"fonts/vag-rounded-next-bold.woff2",
+			`fonts/vag-rounded-next-bold.woff2?v=${subtitleFontAsset.version}`,
+		),
+	);
+	const playerStyleAsset = createStaticAsset(playerStyleFile, "text/css");
+	const playerScriptAsset = createStaticAsset(
+		playerScriptFile,
+		"application/javascript",
+	);
+	const playerSubtitlesScriptAsset = createStaticAsset(
+		playerSubtitlesScriptFile,
+		"application/javascript",
+	);
+	const shakaScriptVersion =
+		shakaVendorAssets.get("shaka-player.ui.js").version;
+	const shakaStyleVersion = shakaVendorAssets.get("controls.css").version;
+	const videoPlayerFile = Buffer.from(
+		videoPlayerTemplate
+			.replace(
+				"vendor/shaka/shaka-player.ui.js",
+				`vendor/shaka/shaka-player.ui.js?v=${shakaScriptVersion}`,
+			)
+			.replace(
+				"vendor/shaka/controls.css",
+				`vendor/shaka/controls.css?v=${shakaStyleVersion}`,
+			)
+			.replace(
+				'href="player.css"',
+				`href="player.css?v=${playerStyleAsset.version}"`,
+			)
+			.replace(
+				'src="icons/file-x.svg"',
+				`src="icons/file-x.svg?v=${fileXIconAsset.version}"`,
+			)
+			.replace(
+				'<script defer src="player.js"></script>',
+				`<script defer src="player.js?v=${playerScriptAsset.version}" `
+				+ `data-jassub-version="${jassubVersion}" `
+				+ `data-subtitle-font-version="${subtitleFontAsset.version}">`
+				+ "</script>",
+			)
+			.replace(
+				'<script defer src="player-subtitles.js"></script>',
+				`<script defer src="player-subtitles.js?v=`
+				+ `${playerSubtitlesScriptAsset.version}"></script>`,
+			),
+	);
 	const testAssetsRootPath = resolve(projectRoot, "test");
 	const testAssetTypes = new Map([
 		[".m3u8", "application/vnd.apple.mpegurl"],
@@ -168,8 +362,10 @@ async function buildApp(options = {}) {
 		[".aac", "audio/aac"],
 	]);
 
-	function registerGetAliases(paths, handler) {
-		for (const path of paths) app.get(path, handler);
+	function registerGetAliases(paths, handler, options) {
+		for (const path of paths) {
+			app.get(path, options || {}, handler);
+		}
 	}
 
 	function getSafeTestAssetPath(requestPath) {
@@ -201,40 +397,91 @@ async function buildApp(options = {}) {
 	}
 	app.get("/videoplayer", sendVideoPlayer);
 
+	function sendStaticAsset(req, reply, asset) {
+		const selectedRepresentation = selectStaticRepresentation(req, asset);
+		if (!selectedRepresentation) {
+			return reply.code(406).send(jsonError("No acceptable encoding"));
+		}
+		const [encoding, representation] = selectedRepresentation;
+		const requestedVersion = req.query?.v;
+		reply.header(
+			"Cache-Control",
+			requestedVersion === asset.version
+				? IMMUTABLE_CACHE_CONTROL
+				: REVALIDATE_CACHE_CONTROL,
+		);
+		if (asset.representations.size > 1) {
+			reply.header("Vary", "Accept-Encoding");
+		}
+		if (encoding !== "identity") {
+			reply.header("Content-Encoding", encoding);
+		}
+		reply.header("ETag", representation.etag);
+		const ifNoneMatch = req.headers["if-none-match"];
+		if (
+			typeof ifNoneMatch === "string"
+			&& ifNoneMatch.split(",").some((candidate) => {
+				const value = candidate.trim();
+				return value === "*"
+					|| value === representation.etag
+					|| value === `W/${representation.etag}`;
+			})
+		) {
+			return reply.code(304).send();
+		}
+		reply.type(asset.contentType);
+		return reply.send(representation.body);
+	}
+
+	function createStaticAssetHandler(asset) {
+		return async function sendAsset(req, reply) {
+			return sendStaticAsset(req, reply, asset);
+		};
+	}
+	registerGetAliases([
+		"/player.css",
+		"/metrics-api/player.css",
+	], createStaticAssetHandler(playerStyleAsset), { compress: false });
+	registerGetAliases([
+		"/player.js",
+		"/metrics-api/player.js",
+	], createStaticAssetHandler(playerScriptAsset), { compress: false });
+	registerGetAliases([
+		"/player-subtitles.js",
+		"/metrics-api/player-subtitles.js",
+	], createStaticAssetHandler(playerSubtitlesScriptAsset), {
+		compress: false,
+	});
+
 	async function sendSubtitleFont(req, reply) {
-		reply.type("font/woff2");
-		return reply.send(subtitleFontFile);
+		return sendStaticAsset(req, reply, subtitleFontAsset);
 	}
 	registerGetAliases([
 		"/fonts/vag-rounded-next-bold.woff2",
 		"/metrics-api/fonts/vag-rounded-next-bold.woff2",
-	], sendSubtitleFont);
+	], sendSubtitleFont, { compress: false });
 
 	async function sendJassubVendorAsset(req, reply) {
 		const assetName = req.params.file;
-		const contentType = jassubVendorAssets.get(assetName);
-		if (!contentType) return reply.code(404).send(jsonError("Not found"));
-		reply.header("Cache-Control", "public, max-age=0, must-revalidate");
-		reply.type(contentType);
-		return reply.send(createReadStream(join(jassubVendorRootPath, assetName)));
+		const asset = jassubVendorAssets.get(assetName);
+		if (!asset) return reply.code(404).send(jsonError("Not found"));
+		return sendStaticAsset(req, reply, asset);
 	}
 	registerGetAliases([
 		"/vendor/jassub/:file",
 		"/metrics-api/vendor/jassub/:file",
-	], sendJassubVendorAsset);
+	], sendJassubVendorAsset, { compress: false });
 
 	async function sendShakaVendorAsset(req, reply) {
 		const assetName = req.params.file;
-		const contentType = shakaVendorAssets.get(assetName);
-		if (!contentType) return reply.code(404).send(jsonError("Not found"));
-		reply.header("Cache-Control", "public, max-age=86400, immutable");
-		reply.type(contentType);
-		return reply.send(createReadStream(join(shakaVendorRootPath, assetName)));
+		const asset = shakaVendorAssets.get(assetName);
+		if (!asset) return reply.code(404).send(jsonError("Not found"));
+		return sendStaticAsset(req, reply, asset);
 	}
 	registerGetAliases([
 		"/vendor/shaka/:file",
 		"/metrics-api/vendor/shaka/:file",
-	], sendShakaVendorAsset);
+	], sendShakaVendorAsset, { compress: false });
 
 	async function sendSitePresenceTracker(req, reply) {
 		reply.type("application/javascript");
@@ -246,14 +493,12 @@ async function buildApp(options = {}) {
 	], sendSitePresenceTracker);
 
 	async function sendFileXIcon(req, reply) {
-		reply.header("Cache-Control", "public, max-age=86400, immutable");
-		reply.type("image/svg+xml");
-		return reply.send(fileXIcon);
+		return sendStaticAsset(req, reply, fileXIconAsset);
 	}
 	registerGetAliases([
 		"/icons/file-x.svg",
 		"/metrics-api/icons/file-x.svg",
-	], sendFileXIcon);
+	], sendFileXIcon, { compress: false });
 
 	app.get("/test/*", async (req, reply) => {
 		const asset = getSafeTestAssetPath(req.params["*"] || "");

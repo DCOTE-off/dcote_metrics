@@ -2762,6 +2762,722 @@ var colorMatrixConversionMap = {
   }
 };
 
+// node_modules/jassub/dist/worker/renderers/webgl1-renderer.js
+var VERTEX_SHADER = (
+  /* glsl */
+  `
+precision mediump float;
+
+// Quad position attribute (0,0), (1,0), (0,1), (1,0), (1,1), (0,1)
+attribute vec2 a_quadPos;
+
+uniform vec2 u_resolution;
+
+// Instance attributes
+attribute vec4 a_destRect;  // x, y, w, h
+attribute vec4 a_color;     // r, g, b, a
+attribute float a_texLayer;
+
+varying vec2 v_destXY;
+varying vec4 v_color;
+varying vec2 v_texSize;
+varying float v_texLayer;
+varying vec2 v_texCoord;
+varying vec2 v_normalizedImageSize;
+
+uniform vec2 u_texDimensions;
+
+void main() {
+  vec2 pixelPos = a_destRect.xy + a_quadPos * a_destRect.zw;
+  vec2 clipPos = (pixelPos / u_resolution) * 2.0 - 1.0;
+  clipPos.y = -clipPos.y;
+
+  gl_Position = vec4(clipPos, 0.0, 1.0);
+  v_destXY = a_destRect.xy;
+  v_color = a_color;
+  v_texSize = a_destRect.zw;
+  v_texLayer = a_texLayer;
+  v_texCoord = a_quadPos;
+  v_normalizedImageSize = a_destRect.zw / u_texDimensions;
+}
+`
+);
+var FRAGMENT_SHADER = (
+  /* glsl */
+  `
+precision mediump float;
+
+uniform sampler2D u_tex;
+uniform mat3 u_colorMatrix;
+uniform vec2 u_resolution;
+
+varying vec2 v_destXY;
+varying vec4 v_color;
+varying vec2 v_texSize;
+varying float v_texLayer;
+varying vec2 v_texCoord;
+varying vec2 v_normalizedImageSize;
+
+void main() {
+  // Sample texture (r channel contains mask)
+  float mask = texture2D(u_tex, v_texCoord * v_normalizedImageSize).r;
+
+  // Apply color matrix conversion (identity if no conversion needed)
+  vec3 correctedColor = u_colorMatrix * v_color.rgb;
+
+  // libass color alpha: 0 = opaque, 255 = transparent (inverted)
+  float colorAlpha = 1.0 - v_color.a;
+
+  // Final alpha = colorAlpha * mask
+  float a = colorAlpha * mask;
+
+  // Premultiplied alpha output
+  gl_FragColor = vec4(correctedColor * a, a);
+}
+`
+);
+var MAX_INSTANCES = 256;
+var WebGL1Renderer = class {
+  canvas = null;
+  gl = null;
+  program = null;
+  // Extensions
+  instancedArraysExt = null;
+  // Uniform locations
+  u_resolution = null;
+  u_tex = null;
+  u_colorMatrix = null;
+  u_texDimensions = null;
+  // Attribute locations
+  a_quadPos = -1;
+  a_destRect = -1;
+  a_color = -1;
+  a_texLayer = -1;
+  // Quad vertex buffer (shared for all instances)
+  quadPosBuffer = null;
+  // Instance attribute buffers
+  instanceDestRectBuffer = null;
+  instanceColorBuffer = null;
+  instanceTexLayerBuffer = null;
+  // Instance data arrays
+  instanceDestRectData;
+  instanceColorData;
+  instanceTexLayerData;
+  // Texture cache (since WebGL1 doesn't support texture arrays)
+  textureCache = /* @__PURE__ */ new Map();
+  textureWidth = 0;
+  textureHeight = 0;
+  colorMatrix = IDENTITY_MATRIX;
+  constructor() {
+    this.instanceDestRectData = new Float32Array(MAX_INSTANCES * 4);
+    this.instanceColorData = new Float32Array(MAX_INSTANCES * 4);
+    this.instanceTexLayerData = new Float32Array(MAX_INSTANCES);
+  }
+  _scheduledResize;
+  resizeCanvas(width, height) {
+    if (!width || !height)
+      return;
+    if (this.canvas?.width === width && this.canvas?.height === height)
+      return;
+    this._scheduledResize = { width, height };
+  }
+  setCanvas(canvas) {
+    this.canvas = canvas;
+    this.gl = canvas.getContext("webgl", {
+      alpha: true,
+      premultipliedAlpha: true,
+      antialias: false,
+      depth: false,
+      preserveDrawingBuffer: false,
+      stencil: false,
+      desynchronized: true,
+      powerPreference: "high-performance"
+    });
+    if (!this.gl) {
+      throw new Error("Could not get WebGL context");
+    }
+    this.instancedArraysExt = this.gl.getExtension("ANGLE_instanced_arrays");
+    if (!this.instancedArraysExt) {
+      throw new Error("ANGLE_instanced_arrays extension not supported");
+    }
+    const vertexShader = this.createShader(this.gl.VERTEX_SHADER, VERTEX_SHADER);
+    const fragmentShader = this.createShader(this.gl.FRAGMENT_SHADER, FRAGMENT_SHADER);
+    if (!vertexShader || !fragmentShader) {
+      throw new Error("Failed to create shaders");
+    }
+    this.program = this.gl.createProgram();
+    this.gl.attachShader(this.program, vertexShader);
+    this.gl.attachShader(this.program, fragmentShader);
+    this.gl.linkProgram(this.program);
+    if (!this.gl.getProgramParameter(this.program, this.gl.LINK_STATUS)) {
+      const info = this.gl.getProgramInfoLog(this.program);
+      throw new Error("Failed to link program: " + info);
+    }
+    this.u_resolution = this.gl.getUniformLocation(this.program, "u_resolution");
+    this.u_tex = this.gl.getUniformLocation(this.program, "u_tex");
+    this.u_colorMatrix = this.gl.getUniformLocation(this.program, "u_colorMatrix");
+    this.u_texDimensions = this.gl.getUniformLocation(this.program, "u_texDimensions");
+    this.a_quadPos = this.gl.getAttribLocation(this.program, "a_quadPos");
+    this.a_destRect = this.gl.getAttribLocation(this.program, "a_destRect");
+    this.a_color = this.gl.getAttribLocation(this.program, "a_color");
+    this.a_texLayer = this.gl.getAttribLocation(this.program, "a_texLayer");
+    this.quadPosBuffer = this.gl.createBuffer();
+    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.quadPosBuffer);
+    const quadPositions = new Float32Array([
+      0,
+      0,
+      1,
+      0,
+      0,
+      1,
+      1,
+      0,
+      1,
+      1,
+      0,
+      1
+    ]);
+    this.gl.bufferData(this.gl.ARRAY_BUFFER, quadPositions, this.gl.STATIC_DRAW);
+    this.instanceDestRectBuffer = this.gl.createBuffer();
+    this.instanceColorBuffer = this.gl.createBuffer();
+    this.instanceTexLayerBuffer = this.gl.createBuffer();
+    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.quadPosBuffer);
+    this.gl.enableVertexAttribArray(this.a_quadPos);
+    this.gl.vertexAttribPointer(this.a_quadPos, 2, this.gl.FLOAT, false, 0, 0);
+    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.instanceDestRectBuffer);
+    this.gl.enableVertexAttribArray(this.a_destRect);
+    this.gl.vertexAttribPointer(this.a_destRect, 4, this.gl.FLOAT, false, 0, 0);
+    this.instancedArraysExt.vertexAttribDivisorANGLE(this.a_destRect, 1);
+    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.instanceColorBuffer);
+    this.gl.enableVertexAttribArray(this.a_color);
+    this.gl.vertexAttribPointer(this.a_color, 4, this.gl.FLOAT, false, 0, 0);
+    this.instancedArraysExt.vertexAttribDivisorANGLE(this.a_color, 1);
+    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.instanceTexLayerBuffer);
+    this.gl.enableVertexAttribArray(this.a_texLayer);
+    this.gl.vertexAttribPointer(this.a_texLayer, 1, this.gl.FLOAT, false, 0, 0);
+    this.instancedArraysExt.vertexAttribDivisorANGLE(this.a_texLayer, 1);
+    this.gl.enable(this.gl.BLEND);
+    this.gl.blendFunc(this.gl.ONE, this.gl.ONE_MINUS_SRC_ALPHA);
+    this.gl.useProgram(this.program);
+    this.gl.uniform1i(this.u_tex, 0);
+    this.gl.uniformMatrix3fv(this.u_colorMatrix, false, this.colorMatrix);
+    this.gl.pixelStorei(this.gl.UNPACK_ALIGNMENT, 1);
+    this.gl.clearColor(0, 0, 0, 0);
+    this.gl.activeTexture(this.gl.TEXTURE0);
+  }
+  createShader(type, source) {
+    const shader = this.gl.createShader(type);
+    this.gl.shaderSource(shader, source);
+    this.gl.compileShader(shader);
+    if (!this.gl.getShaderParameter(shader, this.gl.COMPILE_STATUS)) {
+      const info = this.gl.getShaderInfoLog(shader);
+      console.log(info);
+      this.gl.deleteShader(shader);
+      return null;
+    }
+    return shader;
+  }
+  // Set the color matrix for color space conversion.
+  // Pass null or undefined to use identity (no conversion).
+  setColorMatrix(subtitleColorSpace, videoColorSpace) {
+    this.colorMatrix = (subtitleColorSpace && videoColorSpace && colorMatrixConversionMap[subtitleColorSpace]?.[videoColorSpace]) ?? IDENTITY_MATRIX;
+    if (this.gl && this.u_colorMatrix && this.program) {
+      this.gl.useProgram(this.program);
+      this.gl.uniformMatrix3fv(this.u_colorMatrix, false, this.colorMatrix);
+    }
+  }
+  createTexture(width, height) {
+    const texture = this.gl.createTexture();
+    this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
+    this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.LUMINANCE, width, height, 0, this.gl.LUMINANCE, this.gl.UNSIGNED_BYTE, null);
+    this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.NEAREST);
+    this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.NEAREST);
+    this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE);
+    this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE);
+    return texture;
+  }
+  render(images, heap) {
+    if (!this.gl || !this.program || !this.instancedArraysExt)
+      return;
+    if (this._scheduledResize) {
+      const { width, height } = this._scheduledResize;
+      this._scheduledResize = void 0;
+      this.canvas.width = width;
+      this.canvas.height = height;
+      this.gl.viewport(0, 0, width, height);
+      this.gl.uniform2f(this.u_resolution, width, height);
+    } else {
+      this.gl.clear(this.gl.COLOR_BUFFER_BIT);
+    }
+    let maxW = this.textureWidth;
+    let maxH = this.textureHeight;
+    const validImages = [];
+    for (const img of images) {
+      if (img.w <= 0 || img.h <= 0)
+        continue;
+      validImages.push(img);
+      if (img.w > maxW)
+        maxW = img.w;
+      if (img.h > maxH)
+        maxH = img.h;
+    }
+    if (validImages.length === 0)
+      return;
+    if (maxW > this.textureWidth || maxH > this.textureHeight) {
+      this.textureWidth = maxW;
+      this.textureHeight = maxH;
+      for (const texture of this.textureCache.values()) {
+        this.gl.deleteTexture(texture);
+      }
+      this.textureCache.clear();
+    }
+    for (let i = 0; i < validImages.length; i++) {
+      const img = validImages[i];
+      let texture = this.textureCache.get(i);
+      if (!texture) {
+        texture = this.createTexture(this.textureWidth, this.textureHeight);
+        this.textureCache.set(i, texture);
+      }
+      this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
+      const sourceView = new Uint8Array(heap.buffer, img.bitmap, img.stride * img.h);
+      const tightData = new Uint8Array(img.w * img.h);
+      for (let y = 0; y < img.h; y++) {
+        const srcOffset = y * img.stride;
+        const dstOffset = y * img.w;
+        tightData.set(sourceView.subarray(srcOffset, srcOffset + img.w), dstOffset);
+      }
+      this.gl.texSubImage2D(
+        this.gl.TEXTURE_2D,
+        0,
+        0,
+        0,
+        // x, y offset
+        img.w,
+        img.h,
+        this.gl.LUMINANCE,
+        this.gl.UNSIGNED_BYTE,
+        tightData
+      );
+      this.instanceDestRectData[0] = img.dst_x;
+      this.instanceDestRectData[1] = img.dst_y;
+      this.instanceDestRectData[2] = img.w;
+      this.instanceDestRectData[3] = img.h;
+      this.instanceColorData[0] = (img.color >>> 24 & 255) / 255;
+      this.instanceColorData[1] = (img.color >>> 16 & 255) / 255;
+      this.instanceColorData[2] = (img.color >>> 8 & 255) / 255;
+      this.instanceColorData[3] = (img.color & 255) / 255;
+      this.instanceTexLayerData[0] = 0;
+      this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.instanceDestRectBuffer);
+      this.gl.bufferData(this.gl.ARRAY_BUFFER, this.instanceDestRectData.subarray(0, 4), this.gl.DYNAMIC_DRAW);
+      this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.instanceColorBuffer);
+      this.gl.bufferData(this.gl.ARRAY_BUFFER, this.instanceColorData.subarray(0, 4), this.gl.DYNAMIC_DRAW);
+      this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.instanceTexLayerBuffer);
+      this.gl.bufferData(this.gl.ARRAY_BUFFER, this.instanceTexLayerData.subarray(0, 1), this.gl.DYNAMIC_DRAW);
+      this.gl.uniform2f(this.u_texDimensions, this.textureWidth, this.textureHeight);
+      this.instancedArraysExt.drawArraysInstancedANGLE(this.gl.TRIANGLES, 0, 6, 1);
+    }
+  }
+  destroy() {
+    if (this.gl) {
+      for (const texture of this.textureCache.values()) {
+        this.gl.deleteTexture(texture);
+      }
+      this.textureCache.clear();
+      if (this.quadPosBuffer) {
+        this.gl.deleteBuffer(this.quadPosBuffer);
+        this.quadPosBuffer = null;
+      }
+      if (this.instanceDestRectBuffer) {
+        this.gl.deleteBuffer(this.instanceDestRectBuffer);
+        this.instanceDestRectBuffer = null;
+      }
+      if (this.instanceColorBuffer) {
+        this.gl.deleteBuffer(this.instanceColorBuffer);
+        this.instanceColorBuffer = null;
+      }
+      if (this.instanceTexLayerBuffer) {
+        this.gl.deleteBuffer(this.instanceTexLayerBuffer);
+        this.instanceTexLayerBuffer = null;
+      }
+      if (this.program) {
+        this.gl.deleteProgram(this.program);
+        this.program = null;
+      }
+      this.gl = null;
+    }
+  }
+};
+
+// node_modules/jassub/dist/worker/renderers/webgl2-renderer.js
+var VERTEX_SHADER2 = (
+  /* glsl */
+  `#version 300 es
+precision highp float;
+
+const vec2 QUAD_POSITIONS[6] = vec2[6](
+  vec2(0.0, 0.0),
+  vec2(1.0, 0.0),
+  vec2(0.0, 1.0),
+  vec2(1.0, 0.0),
+  vec2(1.0, 1.0),
+  vec2(0.0, 1.0)
+);
+
+uniform vec2 u_resolution;
+
+// Instance attributes
+in vec4 a_destRect;  // x, y, w, h
+in vec4 a_color;     // r, g, b, a
+in float a_texLayer;
+
+flat out vec2 v_destXY;
+flat out vec4 v_color;
+flat out vec2 v_texSize;
+flat out float v_texLayer;
+
+void main() {
+  vec2 quadPos = QUAD_POSITIONS[gl_VertexID];
+  vec2 pixelPos = a_destRect.xy + quadPos * a_destRect.zw;
+  vec2 clipPos = (pixelPos / u_resolution) * 2.0 - 1.0;
+  clipPos.y = -clipPos.y;
+
+  gl_Position = vec4(clipPos, 0.0, 1.0);
+  v_destXY = a_destRect.xy;
+  v_color = a_color;
+  v_texSize = a_destRect.zw;
+  v_texLayer = a_texLayer;
+}
+`
+);
+var FRAGMENT_SHADER2 = (
+  /* glsl */
+  `#version 300 es
+precision highp float;
+precision highp sampler2DArray;
+
+uniform sampler2DArray u_texArray;
+uniform mat3 u_colorMatrix;
+uniform vec2 u_resolution;
+
+flat in vec2 v_destXY;
+flat in vec4 v_color;
+flat in vec2 v_texSize;
+flat in float v_texLayer;
+
+out vec4 fragColor;
+
+void main() {
+  // Flip Y: WebGL's gl_FragCoord.y is 0 at bottom, but destXY.y is from top
+  vec2 fragPos = vec2(gl_FragCoord.x, u_resolution.y - gl_FragCoord.y);
+
+  // Calculate local position within the quad (screen coords)
+  vec2 localPos = fragPos - v_destXY;
+
+  // Convert to integer texel coordinates for texelFetch
+  ivec2 texCoord = ivec2(floor(localPos));
+
+  // Bounds check (prevents out-of-bounds access)
+  ivec2 texSizeI = ivec2(v_texSize);
+  if (texCoord.x < 0 || texCoord.y < 0 || texCoord.x >= texSizeI.x || texCoord.y >= texSizeI.y) {
+    discard;
+  }
+
+  // texelFetch: integer coords, no interpolation, no precision issues
+  float mask = texelFetch(u_texArray, ivec3(texCoord, int(v_texLayer)), 0).r;
+
+  // Apply color matrix conversion (identity if no conversion needed)
+  vec3 correctedColor = u_colorMatrix * v_color.rgb;
+
+  // libass color alpha: 0 = opaque, 255 = transparent (inverted)
+  float colorAlpha = 1.0 - v_color.a;
+
+  // Final alpha = colorAlpha * mask
+  float a = colorAlpha * mask;
+
+  // Premultiplied alpha output
+  fragColor = vec4(correctedColor * a, a);
+}
+`
+);
+var TEX_ARRAY_SIZE = 64;
+var TEX_INITIAL_SIZE = 256;
+var MAX_INSTANCES2 = 256;
+var WebGL2Renderer = class {
+  canvas = null;
+  gl = null;
+  program = null;
+  vao = null;
+  // Uniform locations
+  u_resolution = null;
+  u_texArray = null;
+  u_colorMatrix = null;
+  // Instance attribute buffers
+  instanceDestRectBuffer = null;
+  instanceColorBuffer = null;
+  instanceTexLayerBuffer = null;
+  // Instance data arrays
+  instanceDestRectData;
+  instanceColorData;
+  instanceTexLayerData;
+  texArray = null;
+  texArrayWidth = 0;
+  texArrayHeight = 0;
+  colorMatrix = IDENTITY_MATRIX;
+  constructor() {
+    this.instanceDestRectData = new Float32Array(MAX_INSTANCES2 * 4);
+    this.instanceColorData = new Float32Array(MAX_INSTANCES2 * 4);
+    this.instanceTexLayerData = new Float32Array(MAX_INSTANCES2);
+  }
+  _scheduledResize;
+  resizeCanvas(width, height) {
+    if (!width || !height)
+      return;
+    if (this.canvas?.width === width && this.canvas?.height === height)
+      return;
+    this._scheduledResize = { width, height };
+  }
+  setCanvas(canvas) {
+    this.canvas = canvas;
+    this.gl = canvas.getContext("webgl2", {
+      alpha: true,
+      premultipliedAlpha: true,
+      antialias: false,
+      depth: false,
+      preserveDrawingBuffer: false,
+      stencil: false,
+      desynchronized: true,
+      powerPreference: "high-performance"
+    });
+    if (!this.gl) {
+      throw new Error("Could not get WebGL2 context");
+    }
+    const vertexShader = this.createShader(this.gl.VERTEX_SHADER, VERTEX_SHADER2);
+    const fragmentShader = this.createShader(this.gl.FRAGMENT_SHADER, FRAGMENT_SHADER2);
+    if (!vertexShader || !fragmentShader) {
+      throw new Error("Failed to create shaders");
+    }
+    this.program = this.gl.createProgram();
+    this.gl.attachShader(this.program, vertexShader);
+    this.gl.attachShader(this.program, fragmentShader);
+    this.gl.linkProgram(this.program);
+    if (!this.gl.getProgramParameter(this.program, this.gl.LINK_STATUS)) {
+      const info = this.gl.getProgramInfoLog(this.program);
+      throw new Error("Failed to link program: " + info);
+    }
+    this.gl.deleteShader(vertexShader);
+    this.gl.deleteShader(fragmentShader);
+    this.u_resolution = this.gl.getUniformLocation(this.program, "u_resolution");
+    this.u_texArray = this.gl.getUniformLocation(this.program, "u_texArray");
+    this.u_colorMatrix = this.gl.getUniformLocation(this.program, "u_colorMatrix");
+    this.instanceDestRectBuffer = this.gl.createBuffer();
+    this.instanceColorBuffer = this.gl.createBuffer();
+    this.instanceTexLayerBuffer = this.gl.createBuffer();
+    this.vao = this.gl.createVertexArray();
+    this.gl.bindVertexArray(this.vao);
+    const destRectLoc = this.gl.getAttribLocation(this.program, "a_destRect");
+    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.instanceDestRectBuffer);
+    this.gl.enableVertexAttribArray(destRectLoc);
+    this.gl.vertexAttribPointer(destRectLoc, 4, this.gl.FLOAT, false, 0, 0);
+    this.gl.vertexAttribDivisor(destRectLoc, 1);
+    const colorLoc = this.gl.getAttribLocation(this.program, "a_color");
+    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.instanceColorBuffer);
+    this.gl.enableVertexAttribArray(colorLoc);
+    this.gl.vertexAttribPointer(colorLoc, 4, this.gl.FLOAT, false, 0, 0);
+    this.gl.vertexAttribDivisor(colorLoc, 1);
+    const texLayerLoc = this.gl.getAttribLocation(this.program, "a_texLayer");
+    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.instanceTexLayerBuffer);
+    this.gl.enableVertexAttribArray(texLayerLoc);
+    this.gl.vertexAttribPointer(texLayerLoc, 1, this.gl.FLOAT, false, 0, 0);
+    this.gl.vertexAttribDivisor(texLayerLoc, 1);
+    this.gl.enable(this.gl.BLEND);
+    this.gl.blendFunc(this.gl.ONE, this.gl.ONE_MINUS_SRC_ALPHA);
+    this.gl.useProgram(this.program);
+    this.gl.uniform1i(this.u_texArray, 0);
+    this.gl.uniformMatrix3fv(this.u_colorMatrix, false, this.colorMatrix);
+    this.gl.pixelStorei(this.gl.UNPACK_ALIGNMENT, 1);
+    this.gl.clearColor(0, 0, 0, 0);
+    this.gl.activeTexture(this.gl.TEXTURE0);
+    this.createTexArray(TEX_INITIAL_SIZE, TEX_INITIAL_SIZE);
+  }
+  createShader(type, source) {
+    const shader = this.gl.createShader(type);
+    this.gl.shaderSource(shader, source);
+    this.gl.compileShader(shader);
+    if (!this.gl.getShaderParameter(shader, this.gl.COMPILE_STATUS)) {
+      const info = this.gl.getShaderInfoLog(shader);
+      console.log(info);
+      this.gl.deleteShader(shader);
+      return null;
+    }
+    return shader;
+  }
+  // Set the color matrix for color space conversion.
+  // Pass null or undefined to use identity (no conversion).
+  setColorMatrix(subtitleColorSpace, videoColorSpace) {
+    this.colorMatrix = (subtitleColorSpace && videoColorSpace && colorMatrixConversionMap[subtitleColorSpace]?.[videoColorSpace]) ?? IDENTITY_MATRIX;
+    if (this.gl && this.u_colorMatrix && this.program) {
+      this.gl.useProgram(this.program);
+      this.gl.uniformMatrix3fv(this.u_colorMatrix, false, this.colorMatrix);
+    }
+  }
+  createTexArray(width, height) {
+    if (this.texArray) {
+      this.gl.deleteTexture(this.texArray);
+    }
+    this.texArray = this.gl.createTexture();
+    this.gl.bindTexture(this.gl.TEXTURE_2D_ARRAY, this.texArray);
+    this.gl.texImage3D(
+      this.gl.TEXTURE_2D_ARRAY,
+      0,
+      this.gl.R8,
+      width,
+      height,
+      TEX_ARRAY_SIZE,
+      0,
+      this.gl.RED,
+      this.gl.UNSIGNED_BYTE,
+      null
+      // Firefox cries about uninitialized data, but is slower with zero initialized data...
+    );
+    this.gl.texParameteri(this.gl.TEXTURE_2D_ARRAY, this.gl.TEXTURE_MIN_FILTER, this.gl.NEAREST);
+    this.gl.texParameteri(this.gl.TEXTURE_2D_ARRAY, this.gl.TEXTURE_MAG_FILTER, this.gl.NEAREST);
+    this.gl.texParameteri(this.gl.TEXTURE_2D_ARRAY, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE);
+    this.gl.texParameteri(this.gl.TEXTURE_2D_ARRAY, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE);
+    this.texArrayWidth = width;
+    this.texArrayHeight = height;
+  }
+  render(images, heap) {
+    if (!this.gl || !this.program || !this.vao || !this.texArray)
+      return;
+    if (self.HEAPU8RAW.buffer !== self.WASMMEMORY.buffer || SHOULD_REFERENCE_MEMORY) {
+      heap = self.HEAPU8RAW = new Uint8Array(self.WASMMEMORY.buffer);
+    }
+    if (this._scheduledResize) {
+      const { width, height } = this._scheduledResize;
+      this._scheduledResize = void 0;
+      this.canvas.width = width;
+      this.canvas.height = height;
+      this.gl.viewport(0, 0, width, height);
+      this.gl.uniform2f(this.u_resolution, width, height);
+    } else {
+      this.gl.clear(this.gl.COLOR_BUFFER_BIT);
+    }
+    let maxW = this.texArrayWidth;
+    let maxH = this.texArrayHeight;
+    const validImages = [];
+    for (const img of images) {
+      if (img.w <= 0 || img.h <= 0)
+        continue;
+      validImages.push(img);
+      if (img.w > maxW)
+        maxW = img.w;
+      if (img.h > maxH)
+        maxH = img.h;
+    }
+    if (validImages.length === 0)
+      return;
+    if (maxW > this.texArrayWidth || maxH > this.texArrayHeight) {
+      this.createTexArray(maxW, maxH);
+    }
+    const batchSize = Math.min(TEX_ARRAY_SIZE, MAX_INSTANCES2);
+    for (let batchStart = 0; batchStart < validImages.length; batchStart += batchSize) {
+      const batchEnd = Math.min(batchStart + batchSize, validImages.length);
+      let instanceCount = 0;
+      for (let i = batchStart; i < batchEnd; i++) {
+        const img = validImages[i];
+        const layer = instanceCount;
+        this.gl.pixelStorei(this.gl.UNPACK_ROW_LENGTH, img.stride);
+        if (IS_FIREFOX || IS_SAFARI) {
+          const sourceView = new Uint8Array(heap.buffer, img.bitmap, img.stride * img.h);
+          const bitmapData = new Uint8Array(sourceView);
+          this.gl.texSubImage3D(
+            this.gl.TEXTURE_2D_ARRAY,
+            0,
+            0,
+            0,
+            layer,
+            // x, y, z offset
+            img.w,
+            img.h,
+            1,
+            // depth (1 layer)
+            this.gl.RED,
+            this.gl.UNSIGNED_BYTE,
+            bitmapData
+          );
+        } else {
+          this.gl.texSubImage3D(
+            this.gl.TEXTURE_2D_ARRAY,
+            0,
+            0,
+            0,
+            layer,
+            // x, y, z offset
+            img.w,
+            img.h,
+            1,
+            // depth (1 layer)
+            this.gl.RED,
+            this.gl.UNSIGNED_BYTE,
+            heap,
+            img.bitmap
+          );
+        }
+        const idx = instanceCount * 4;
+        this.instanceDestRectData[idx] = img.dst_x;
+        this.instanceDestRectData[idx + 1] = img.dst_y;
+        this.instanceDestRectData[idx + 2] = img.w;
+        this.instanceDestRectData[idx + 3] = img.h;
+        this.instanceColorData[idx] = (img.color >>> 24 & 255) / 255;
+        this.instanceColorData[idx + 1] = (img.color >>> 16 & 255) / 255;
+        this.instanceColorData[idx + 2] = (img.color >>> 8 & 255) / 255;
+        this.instanceColorData[idx + 3] = (img.color & 255) / 255;
+        this.instanceTexLayerData[instanceCount] = layer;
+        instanceCount++;
+      }
+      this.gl.pixelStorei(this.gl.UNPACK_ROW_LENGTH, 0);
+      if (instanceCount === 0)
+        continue;
+      this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.instanceDestRectBuffer);
+      this.gl.bufferData(this.gl.ARRAY_BUFFER, this.instanceDestRectData.subarray(0, instanceCount * 4), this.gl.DYNAMIC_DRAW);
+      this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.instanceColorBuffer);
+      this.gl.bufferData(this.gl.ARRAY_BUFFER, this.instanceColorData.subarray(0, instanceCount * 4), this.gl.DYNAMIC_DRAW);
+      this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.instanceTexLayerBuffer);
+      this.gl.bufferData(this.gl.ARRAY_BUFFER, this.instanceTexLayerData.subarray(0, instanceCount), this.gl.DYNAMIC_DRAW);
+      this.gl.drawArraysInstanced(this.gl.TRIANGLES, 0, 6, instanceCount);
+    }
+  }
+  destroy() {
+    if (this.gl) {
+      if (this.texArray) {
+        this.gl.deleteTexture(this.texArray);
+        this.texArray = null;
+      }
+      if (this.instanceDestRectBuffer) {
+        this.gl.deleteBuffer(this.instanceDestRectBuffer);
+        this.instanceDestRectBuffer = null;
+      }
+      if (this.instanceColorBuffer) {
+        this.gl.deleteBuffer(this.instanceColorBuffer);
+        this.instanceColorBuffer = null;
+      }
+      if (this.instanceTexLayerBuffer) {
+        this.gl.deleteBuffer(this.instanceTexLayerBuffer);
+        this.instanceTexLayerBuffer = null;
+      }
+      if (this.vao) {
+        this.gl.deleteVertexArray(this.vao);
+        this.vao = null;
+      }
+      if (this.program) {
+        this.gl.deleteProgram(this.program);
+        this.program = null;
+      }
+      this.gl = null;
+    }
+  }
+};
+
 // node_modules/jassub/dist/worker/worker.js
 var constructor = /* @__PURE__ */ Symbol.for("constructor");
 var ASSRenderer = class {
@@ -2785,9 +3501,9 @@ var ASSRenderer = class {
     try {
       const testCanvas = new OffscreenCanvas(1, 1);
       if (testCanvas.getContext("webgl2")) {
-        this._gpurender = new Canvas2DRenderer();
+        this._gpurender = new WebGL2Renderer();
       } else {
-        this._gpurender = testCanvas.getContext("webgl")?.getExtension("ANGLE_instanced_arrays") ? new Canvas2DRenderer() : new Canvas2DRenderer();
+        this._gpurender = testCanvas.getContext("webgl")?.getExtension("ANGLE_instanced_arrays") ? new WebGL1Renderer() : new Canvas2DRenderer();
       }
     } catch {
       this._gpurender = new Canvas2DRenderer();
