@@ -90,9 +90,12 @@ services:
         networks:
             - server-side
         volumes:
-            - /:/host:ro
+            - /:/host:ro,rslave
+            - /run/dbus/system_bus_socket:/run/dbus/system_bus_socket:ro
         command:
             - "--path.rootfs=/host"
+            - "--collector.processes"
+            - "--collector.systemd"
 
 networks:
     server-side: {}

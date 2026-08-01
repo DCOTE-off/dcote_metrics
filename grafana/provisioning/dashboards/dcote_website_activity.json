@@ -18,7 +18,8 @@
 	"panels": [
 		{
 			"datasource": {
-				"type": "prometheus"
+				"type": "prometheus",
+				"uid": "dcote-analytics"
 			},
 			"fieldConfig": {
 				"defaults": {
@@ -118,18 +119,19 @@
 					"editorMode": "code",
 					"expr": "dcote_presence{metric=\"active_site_users\"}",
 					"interval": "5s",
-					"legendFormat": "Активные пользователи сайта",
+					"legendFormat": "Активные зарегистрированные пользователи сайта",
 					"range": true,
 					"refId": "A"
 				}
 			],
-			"title": "Активные пользователи сайта график",
+			"title": "Активные зарегистрированные пользователи сайта — график",
 			"transparent": true,
 			"type": "timeseries"
 		},
 		{
 			"datasource": {
-				"type": "prometheus"
+				"type": "prometheus",
+				"uid": "dcote-analytics"
 			},
 			"fieldConfig": {
 				"defaults": {
@@ -284,7 +286,8 @@
 		},
 		{
 			"datasource": {
-				"type": "prometheus"
+				"type": "prometheus",
+				"uid": "PBFA97CFB590B2093"
 			},
 			"fieldConfig": {
 				"defaults": {
@@ -335,7 +338,8 @@
 			"targets": [
 				{
 					"datasource": {
-						"type": "prometheus"
+						"type": "prometheus",
+						"uid": "PBFA97CFB590B2093"
 					},
 					"editorMode": "code",
 					"expr": "sum(active_site_users_global{job=\"backend\"}) or vector(0)",
@@ -345,13 +349,14 @@
 					"refId": "A"
 				}
 			],
-			"title": "Активные пользователи сайта",
+			"title": "Активные зарегистрированные пользователи сайта",
 			"transparent": true,
 			"type": "stat"
 		},
 		{
 			"datasource": {
-				"type": "prometheus"
+				"type": "prometheus",
+				"uid": "PBFA97CFB590B2093"
 			},
 			"fieldConfig": {
 				"defaults": {
@@ -402,7 +407,8 @@
 			"targets": [
 				{
 					"datasource": {
-						"type": "prometheus"
+						"type": "prometheus",
+						"uid": "PBFA97CFB590B2093"
 					},
 					"editorMode": "code",
 					"expr": "sum(active_site_sessions_global{job=\"backend\"}) or vector(0)",
@@ -418,7 +424,8 @@
 		},
 		{
 			"datasource": {
-				"type": "prometheus"
+				"type": "prometheus",
+				"uid": "PBFA97CFB590B2093"
 			},
 			"fieldConfig": {
 				"defaults": {
@@ -469,7 +476,8 @@
 			"targets": [
 				{
 					"datasource": {
-						"type": "prometheus"
+						"type": "prometheus",
+						"uid": "PBFA97CFB590B2093"
 					},
 					"editorMode": "code",
 					"expr": "sum(active_site_tabs_global{job=\"backend\"}) or vector(0)",
@@ -554,7 +562,7 @@
 					"instant": true
 				}
 			],
-			"title": "Пользователи сайта по страницам",
+			"title": "Зарегистрированные пользователи сайта по страницам",
 			"transparent": true,
 			"type": "bargauge"
 		},
@@ -635,7 +643,8 @@
 		},
 		{
 			"datasource": {
-				"type": "prometheus"
+				"type": "prometheus",
+				"uid": "dcote-analytics"
 			},
 			"fieldConfig": {
 				"defaults": {
@@ -704,7 +713,8 @@
 		},
 		{
 			"datasource": {
-				"type": "prometheus"
+				"type": "prometheus",
+				"uid": "dcote-analytics"
 			},
 			"fieldConfig": {
 				"defaults": {
@@ -799,6 +809,6 @@
 	},
 	"timezone": "browser",
 	"title": "Dcote website activity",
-	"version": 5,
+	"version": 6,
 	"uid": "dcote-website-activity"
 }

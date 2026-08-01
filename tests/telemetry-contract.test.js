@@ -21,6 +21,10 @@ const websiteDashboardPath = new URL(
 	"../grafana/provisioning/dashboards/dcote_website_activity.json",
 	import.meta.url,
 );
+const nodeDashboardPath = new URL(
+	"../grafana/provisioning/dashboards/1860_rev45.json",
+	import.meta.url,
+);
 
 async function readPlayerSources() {
 	return (
@@ -241,14 +245,17 @@ test("dashboards refresh and use exact persisted analytics", async () => {
 	for (const dashboard of [videoDashboard, websiteDashboard]) {
 		for (const panel of dashboard.panels) {
 			for (const target of panel.targets || []) {
-				if (!target.expr?.startsWith("dcote_")) continue;
-				assert.equal(target.datasource.uid, "dcote-analytics");
+				assert.ok(target.datasource.uid);
+				assert.equal(panel.datasource.uid, target.datasource.uid);
+				if (target.expr?.startsWith("dcote_")) {
+					assert.equal(target.datasource.uid, "dcote-analytics");
+				}
 			}
 		}
 	}
 });
 
-test("historical dashboards bound range-query volume and keep current values instant", async () => {
+test("historical dashboards bound range-query volume and keep current stats instant", async () => {
 	const dashboards = await Promise.all(
 		[videoDashboardPath, websiteDashboardPath].map(async (path) =>
 			JSON.parse(await readFile(path, "utf8")),
@@ -272,19 +279,74 @@ test("historical dashboards bound range-query volume and keep current values ins
 			}
 		}
 
-		const currentValuePanels = dashboard.panels.filter((panel) =>
-			(panel.targets || []).some(
-				(target) =>
-					target.expr?.includes("active_") &&
-					panel.type !== "timeseries",
-			),
-		);
-		assert.ok(currentValuePanels.length > 0);
-		for (const panel of currentValuePanels) {
-			for (const target of panel.targets || []) {
-				assert.equal(target.instant, true);
-				assert.equal(target.range, false);
-			}
+	}
+
+	const websiteDashboard = dashboards[1];
+	const currentStatPanels = websiteDashboard.panels.filter((panel) =>
+		panel.type === "stat" && (panel.targets || []).some(
+			(target) => target.expr?.includes("active_"),
+		),
+	);
+	assert.ok(currentStatPanels.length > 0);
+	for (const panel of currentStatPanels) {
+		for (const target of panel.targets || []) {
+			assert.equal(target.instant, true);
+			assert.equal(target.range, false);
+			assert.equal(target.datasource.uid, "PBFA97CFB590B2093");
+		}
+	}
+});
+
+test("viewer gauge compares the latest value with the exact selected-range maximum", async () => {
+	const dashboard = JSON.parse(await readFile(videoDashboardPath, "utf8"));
+	const gauge = dashboard.panels.find((panel) => panel.id === 1);
+
+	assert.equal(gauge.type, "gauge");
+	assert.equal(gauge.datasource.uid, "dcote-analytics");
+	assert.match(gauge.description, /максимума за выбранный период/);
+	assert.ok(gauge.maxDataPoints > 0);
+	assert.ok(gauge.maxDataPoints <= 5000);
+	assert.equal(gauge.fieldConfig.defaults.min, 0);
+	assert.equal(Object.hasOwn(gauge.fieldConfig.defaults, "max"), false);
+	assert.deepEqual(gauge.options.reduceOptions.calcs, ["lastNotNull"]);
+	assert.equal(gauge.targets.length, 1);
+	assert.equal(
+		gauge.targets[0].expr,
+		'dcote_presence{metric="active_viewers"}',
+	);
+	assert.equal(gauge.targets[0].datasource.uid, "dcote-analytics");
+	assert.equal(gauge.targets[0].interval, "5s");
+	assert.equal(gauge.targets[0].range, true);
+	assert.notEqual(gauge.targets[0].instant, true);
+});
+
+test("Node Exporter Full uses one Prometheus datasource and one shared node", async () => {
+	const dashboard = JSON.parse(await readFile(nodeDashboardPath, "utf8"));
+	const variables = dashboard.templating.list;
+
+	assert.deepEqual(variables.map((variable) => variable.name), ["node"]);
+	assert.equal(variables[0].datasource.uid, "PBFA97CFB590B2093");
+	assert.equal(
+		variables[0].query.query,
+		'label_values(node_uname_info{job="node"}, instance)',
+	);
+
+	const queryPanels = [];
+	const collect = (panels) => {
+		for (const panel of panels || []) {
+			if ((panel.targets || []).length > 0) queryPanels.push(panel);
+			collect(panel.panels);
+		}
+	};
+	collect(dashboard.panels);
+
+	assert.ok(queryPanels.length > 100);
+	for (const panel of queryPanels) {
+		assert.equal(panel.datasource.uid, "PBFA97CFB590B2093");
+		for (const target of panel.targets) {
+			assert.match(target.expr, /instance="\$node"/);
+			assert.match(target.expr, /job="node"/);
+			assert.doesNotMatch(target.expr, /\$(?:ds_prometheus|job|nodename)/);
 		}
 	}
 });

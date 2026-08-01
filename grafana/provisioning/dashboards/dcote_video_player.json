@@ -18,14 +18,17 @@
 	"panels": [
 		{
 			"datasource": {
-				"type": "prometheus"
+				"type": "prometheus",
+				"uid": "dcote-analytics"
 			},
+			"description": "Текущее количество зрителей относительно максимума за выбранный период. При нулевом онлайне дуга не заполняется.",
 			"fieldConfig": {
 				"defaults": {
 					"color": {
 						"fixedColor": "red",
 						"mode": "shades"
 					},
+					"min": 0,
 					"noValue": "0",
 					"thresholds": {
 						"mode": "percentage",
@@ -49,6 +52,7 @@
 				"y": 0
 			},
 			"id": 1,
+			"maxDataPoints": 5000,
 			"options": {
 				"barShape": "rounded",
 				"barWidthFactor": 0.2,
@@ -81,13 +85,14 @@
 			"targets": [
 				{
 					"datasource": {
-						"type": "prometheus"
+						"type": "prometheus",
+						"uid": "dcote-analytics"
 					},
-					"editorMode": "builder",
-					"expr": "sum(active_viewers{job=\"backend\"}) or vector(0)",
-					"instant": true,
-					"legendFormat": "__auto",
-					"range": false,
+					"editorMode": "code",
+					"expr": "dcote_presence{metric=\"active_viewers\"}",
+					"interval": "5s",
+					"legendFormat": "Онлайн зрители",
+					"range": true,
 					"refId": "A"
 				}
 			],
@@ -97,7 +102,8 @@
 		},
 		{
 			"datasource": {
-				"type": "prometheus"
+				"type": "prometheus",
+				"uid": "dcote-analytics"
 			},
 			"fieldConfig": {
 				"defaults": {
@@ -207,7 +213,8 @@
 		},
 		{
 			"datasource": {
-				"type": "prometheus"
+				"type": "prometheus",
+				"uid": "dcote-analytics"
 			},
 			"fieldConfig": {
 				"defaults": {
@@ -275,7 +282,8 @@
 		},
 		{
 			"datasource": {
-				"type": "prometheus"
+				"type": "prometheus",
+				"uid": "dcote-analytics"
 			},
 			"fieldConfig": {
 				"defaults": {
@@ -345,7 +353,8 @@
 		},
 		{
 			"datasource": {
-				"type": "prometheus"
+				"type": "prometheus",
+				"uid": "dcote-analytics"
 			},
 			"fieldConfig": {
 				"defaults": {
@@ -415,7 +424,7 @@
 		{
 			"datasource": {
 				"type": "prometheus",
-				"uid": "PBFA97CFB590B2093"
+				"uid": "dcote-analytics"
 			},
 			"fieldConfig": {
 				"defaults": {
@@ -489,7 +498,7 @@
 		{
 			"datasource": {
 				"type": "prometheus",
-				"uid": "PBFA97CFB590B2093"
+				"uid": "dcote-analytics"
 			},
 			"fieldConfig": {
 				"defaults": {
@@ -563,7 +572,7 @@
 		{
 			"datasource": {
 				"type": "prometheus",
-				"uid": "PBFA97CFB590B2093"
+				"uid": "dcote-analytics"
 			},
 			"fieldConfig": {
 				"defaults": {
@@ -631,7 +640,7 @@
 		{
 			"datasource": {
 				"type": "prometheus",
-				"uid": "PBFA97CFB590B2093"
+				"uid": "dcote-analytics"
 			},
 			"fieldConfig": {
 				"defaults": {
@@ -700,7 +709,7 @@
 		{
 			"datasource": {
 				"type": "prometheus",
-				"uid": "PBFA97CFB590B2093"
+				"uid": "dcote-analytics"
 			},
 			"fieldConfig": {
 				"defaults": {
@@ -806,7 +815,7 @@
 		{
 			"datasource": {
 				"type": "prometheus",
-				"uid": "PBFA97CFB590B2093"
+				"uid": "dcote-analytics"
 			},
 			"fieldConfig": {
 				"defaults": {
@@ -911,7 +920,7 @@
 		{
 			"datasource": {
 				"type": "prometheus",
-				"uid": "PBFA97CFB590B2093"
+				"uid": "dcote-analytics"
 			},
 			"fieldConfig": {
 				"defaults": {
@@ -1035,7 +1044,7 @@
 	},
 	"timezone": "browser",
 	"title": "Dcote video player",
-	"version": 6,
+	"version": 7,
 	"uid": "dadad2",
 	"id": 463777304076288
 }
