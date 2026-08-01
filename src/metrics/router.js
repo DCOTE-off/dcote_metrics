@@ -19,6 +19,7 @@ import {
 	createFixedWindowRateLimiter,
 	getSeriesKey,
 	isRequestOriginAllowed,
+	normalizeOrigin,
 } from "./security.js";
 
 const DEFAULT_COUNTRY_LABEL = "Other";
@@ -29,6 +30,7 @@ const MIN_METRIC_SECONDS = 30;
 const MAX_METRIC_SECONDS = 6 * 60 * 60;
 const MAX_WEBSOCKET_MESSAGE_BYTES = 4096;
 const WEBSOCKET_HEARTBEAT_INTERVAL_MS = 30 * 1000;
+const CORS_MAX_AGE_SECONDS = 3600;
 const OVERFLOW_VIDEO_LABELS = Object.freeze({
 	country: "Other",
 	season: "Unknown",
@@ -186,6 +188,7 @@ function validateIngestionRequest(req, reply, runtime) {
 		reply.code(403).send({ error: "Origin is not allowed" });
 		return false;
 	}
+	applyIngestionCorsHeaders(req, reply);
 	if (!runtime.httpLimiter.allow(req.ip)) {
 		reply.header("Retry-After", "60");
 		reply.code(429).send({ error: "Too many requests" });
@@ -199,6 +202,47 @@ function getAcceptedMetricLabels(labels, runtime, subtitle = false) {
 	const series = subtitle ? runtime.subtitleSeries : runtime.videoSeries;
 	if (series.accept(getSeriesKey(labels, names))) return labels;
 	return subtitle ? OVERFLOW_SUBTITLE_LABELS : OVERFLOW_VIDEO_LABELS;
+}
+
+function appendVaryHeader(reply, value) {
+	const existing = String(reply.getHeader("Vary") || "")
+		.split(",")
+		.map((item) => item.trim())
+		.filter(Boolean);
+	if (!existing.some((item) => item.toLowerCase() === value.toLowerCase())) {
+		existing.push(value);
+	}
+	reply.header("Vary", existing.join(", "));
+}
+
+function applyIngestionCorsHeaders(req, reply) {
+	const origin = normalizeOrigin(req.headers.origin);
+	if (!origin) return;
+	reply.header("Access-Control-Allow-Origin", origin);
+	reply.header("Access-Control-Allow-Credentials", "true");
+	appendVaryHeader(reply, "Origin");
+}
+
+function registerIngestionPreflight(app, route, runtime) {
+	app.options(route, async (req, reply) => {
+		if (!isRequestOriginAllowed(req, runtime.config.allowedOrigins)) {
+			return reply.code(403).send({ error: "Origin is not allowed" });
+		}
+		const requestedMethod = req.headers["access-control-request-method"];
+		if (
+			typeof requestedMethod === "string"
+			&& requestedMethod.toUpperCase() !== "POST"
+		) {
+			return reply.code(405).send({ error: "Method is not allowed" });
+		}
+		applyIngestionCorsHeaders(req, reply);
+		reply.header("Access-Control-Allow-Methods", "POST, OPTIONS");
+		reply.header("Access-Control-Allow-Headers", "Content-Type");
+		reply.header("Access-Control-Max-Age", CORS_MAX_AGE_SECONDS);
+		appendVaryHeader(reply, "Access-Control-Request-Method");
+		appendVaryHeader(reply, "Access-Control-Request-Headers");
+		return reply.code(204).send();
+	});
 }
 
 function createSocketMessageLimiter(limit, windowMs) {
@@ -297,6 +341,7 @@ export default async function metricsRoute(app, options) {
 	});
 
 	for (const route of ["/view-labels", "/view-started", "/viewing-time", "/subtitles"]) {
+		registerIngestionPreflight(app, route, runtime);
 		app.post(route, async (req, reply) => {
 			if (!validateIngestionRequest(req, reply, runtime)) return;
 			const body = getMetricBody(req);

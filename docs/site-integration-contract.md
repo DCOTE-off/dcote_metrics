@@ -1,12 +1,19 @@
 # dcote-site integration contract v1
 
-The browser client treats telemetry as optional. `dcote_metrics` keeps both
-direct and reverse-proxy route prefixes available during independent deploys.
+The browser client treats telemetry as optional. Production separates the
+player/video origin from the metrics origin:
+
+- player: `https://video.dcote.net/videoplayer`
+- HLS and subtitles: `https://video.dcote.net/season-*`
+- metrics HTTP and WebSockets: `https://metrics-api.dcote.net/metrics/*`
+
+Legacy `/metrics-api/...` aliases remain internal migration routes and are not
+part of the new public contract.
 
 ## Site presence
 
-- WebSocket: `/metrics/site/ws`
-- Reverse-proxy WebSocket: `/metrics-api/metrics/site/ws`
+- Tracker: `https://metrics-api.dcote.net/site-presence-tracker.js`
+- WebSocket: `wss://metrics-api.dcote.net/metrics/site/ws`
 - Presence fields: `page`, pseudonymous `userId`, browser `sessionId`, `tabId`
 - Event fields: `visitId`, `visitStarted`, `pageViewId`, `pageViewStarted`
 - A successful response echoes `visitAcknowledged` and
@@ -17,7 +24,15 @@ direct and reverse-proxy route prefixes available during independent deploys.
 
 ## Player
 
-- Player document: `/videoplayer`
+- Player document: `https://video.dcote.net/videoplayer`.
+- Player dependencies are scoped under `https://video.dcote.net/videoplayer/`.
+- HTTP telemetry uses `https://metrics-api.dcote.net/metrics/*` and permits
+  the allowlisted player/site origins through CORS. Hidden-page beacons use a
+  safelisted `text/plain` JSON body so delivery does not depend on a preflight;
+  ordinary fetches continue to use `application/json`.
+- Active-viewer presence uses
+  `wss://metrics-api.dcote.net/metrics/ws`; the reverse proxy must preserve
+  WebSocket `Upgrade` and `Connection` headers.
 - Query fields: `src`, `poster`, `skip_start`, `ass`, `ass_lang`.
 - Optional ASS matching fields: `ass_track_id`, `ass_label`, and
   `ass_forced=0|1`. Matching falls back to the base language when no stable
@@ -41,7 +56,7 @@ direct and reverse-proxy route prefixes available during independent deploys.
   mobile layout. A fresh player starts at that target and can adapt downward
   after measuring a slower connection. This is an ABR-only restriction: every
   available rendition remains selectable manually in the quality menu.
-- Static dependencies are served locally under `/vendor` and `/icons`.
+- Static dependencies are also kept on legacy direct paths during migration.
   Content-versioned URLs are cached immutably; unversioned or stale URLs
   require validation with an ETag. Identity, gzip, and Brotli representations
   are prepared at startup and have distinct validators.

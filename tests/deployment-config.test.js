@@ -20,3 +20,12 @@ test("public reverse-proxy upstreams preserve reachable bind defaults", async ()
 		/\$\{PROMETHEUS_BIND_ADDRESS:-127\.0\.0\.1\}:\$\{PROMETHEUS_PORT:-9090\}:9090/,
 	);
 });
+
+test("player receives the dedicated public metrics origin", async () => {
+	const compose = await readFile(composePath, "utf8");
+
+	assert.match(
+		compose,
+		/METRICS_PUBLIC_BASE_URL: \$\{METRICS_PUBLIC_BASE_URL:-https:\/\/metrics-api\.dcote\.net\}/,
+	);
+});

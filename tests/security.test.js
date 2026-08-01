@@ -11,6 +11,10 @@ import {
 	normalizeVoice,
 	tokensMatch,
 } from "../src/metrics/router.js";
+import {
+	DEFAULT_PUBLIC_METRICS_BASE_URL,
+	getPublicHttpBaseUrl,
+} from "../src/runtimeConfig.js";
 
 test("bounded series set rejects new keys after its limit", () => {
 	const keys = createBoundedKeySet(2);
@@ -53,4 +57,15 @@ test("token comparison handles missing and different-length values", () => {
 	assert.equal(tokensMatch("secret", "secret"), true);
 	assert.equal(tokensMatch("wrong", "secret"), false);
 	assert.equal(tokensMatch(null, "secret"), false);
+});
+
+test("public metrics base URL is normalized and rejects unsafe protocols", () => {
+	assert.equal(
+		getPublicHttpBaseUrl("https://metrics.example/api/?ignored=true#hash"),
+		"https://metrics.example/api",
+	);
+	assert.equal(
+		getPublicHttpBaseUrl("javascript:alert(1)"),
+		DEFAULT_PUBLIC_METRICS_BASE_URL,
+	);
 });

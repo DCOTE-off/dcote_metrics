@@ -9,7 +9,8 @@ services:
         init: true
         environment:
             METRICS_AUTH_TOKEN_FILE: /run/secrets/metrics_auth_token
-            METRICS_ALLOWED_ORIGINS: ${METRICS_ALLOWED_ORIGINS:-https://dcote.net,https://www.dcote.net,https://video.dcote.net,http://localhost:7654,http://127.0.0.1:7654}
+            METRICS_ALLOWED_ORIGINS: ${METRICS_ALLOWED_ORIGINS:-https://dcote.net,https://www.dcote.net,https://video.dcote.net,https://metrics-api.dcote.net,http://localhost:7654,http://127.0.0.1:7654}
+            METRICS_PUBLIC_BASE_URL: ${METRICS_PUBLIC_BASE_URL:-https://metrics-api.dcote.net}
             ANALYTICS_DATABASE_PATH: /var/lib/dcote-metrics/analytics.sqlite
             ANALYTICS_RETENTION_DAYS: ${ANALYTICS_RETENTION_DAYS:-400}
             LOG_LEVEL: ${LOG_LEVEL:-info}

@@ -555,7 +555,11 @@ async function ensureAssSubtitlesReady() {
 				`${playerAssetBase}/vendor/jassub/jassub-worker.wasm?v=${jassubAssetVersion}`,
 			modernWasmUrl:
 				`${playerAssetBase}/vendor/jassub/jassub-worker-modern.wasm?v=${jassubAssetVersion}`,
-			fonts: [],
+			// Initial fonts are awaited by JASSUB before renderer.ready resolves.
+			// Keeping the canonical font only in availableFonts makes its first
+			// fallback lookup asynchronous, so early cues stay blank until seeked
+			// forces libass to repaint after the font has finished loading.
+			fonts: [subtitleFontUrl],
 			availableFonts: {
 				"vag rounded next": subtitleFontUrl,
 			},

@@ -1,5 +1,5 @@
-// Конфигурация берётся из query-параметров: один и тот же HTML работает
-// и локально, и в production под /metrics-api.
+// Контент плеера остаётся на video.dcote.net, а телеметрия использует
+// отдельный metrics-api origin, переданный сервером в data-атрибуте.
 const playerParams = new URLSearchParams(location.search);
 const playerScriptElement = document.currentScript;
 const VIEW_METRIC_THRESHOLD_SECONDS = 30;
@@ -30,20 +30,23 @@ const isLocalHost = localHostnamePattern.test(location.hostname);
 const stage =
 	playerParams.get("stage") ||
 	(isLocalHost ? "dev" : "prod");
-const documentBaseUrl = new URL(".", location.href);
-const inferredBackendUrl = documentBaseUrl.href.replace(/\/$/, "");
-const backendUrl =
+const playerAssetBaseUrl = new URL(
+	".",
+	playerScriptElement?.src || document.baseURI,
+);
+const playerAssetBase = playerAssetBaseUrl.href.replace(/\/$/, "");
+const configuredMetricsBaseUrl =
+	playerScriptElement?.dataset.metricsBaseUrl
+	|| "https://metrics-api.dcote.net";
+const metricsBaseUrl =
 	stage === "dev"
 		? location.origin
-		: isLocalHost
-			? "https://video.dcote.net/metrics-api"
-			: inferredBackendUrl;
-const playerAssetBase = backendUrl;
+		: configuredMetricsBaseUrl.replace(/\/+$/, "");
 const jassubAssetVersion =
 	playerScriptElement?.dataset.jassubVersion || "unversioned";
 const subtitleFontAssetVersion =
 	playerScriptElement?.dataset.subtitleFontVersion || "unversioned";
-const websocketEndpoint = new URL(`${backendUrl}/metrics/ws`);
+const websocketEndpoint = new URL(`${metricsBaseUrl}/metrics/ws`);
 websocketEndpoint.protocol =
 	websocketEndpoint.protocol === "https:" ? "wss:" : "ws:";
 const websocketUrl = websocketEndpoint.href;
@@ -265,7 +268,7 @@ function acknowledgeMetricRetry(path, eventId) {
 	}
 }
 async function postJsonMetric(path, payload) {
-	const response = await fetch(`${backendUrl}/metrics/${path}`, {
+	const response = await fetch(`${metricsBaseUrl}/metrics/${path}`, {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(payload),
@@ -301,13 +304,15 @@ function flushMetricRetryQueue() {
 function sendJsonMetric(path, payload) {
 	try {
 		const data = JSON.stringify(payload);
-		const url = `${backendUrl}/metrics/${path}`;
+		const url = `${metricsBaseUrl}/metrics/${path}`;
 		const retryQueued = enqueueMetricRetry(path, payload);
 		if (
 			document.visibilityState === "hidden"
 			&& typeof navigator.sendBeacon === "function"
 		) {
-			const blob = new Blob([data], { type: "application/json" });
+			const blob = new Blob([data], {
+				type: "text/plain;charset=UTF-8",
+			});
 			return navigator.sendBeacon(url, blob) || retryQueued;
 		}
 

@@ -130,13 +130,13 @@
 		const scripts = Array.from(document.scripts);
 		const current = scripts.find((item) =>
 			item.dataset.dcoteSitePresence !== undefined
-			|| item.src.includes("/metrics-api/"),
+			|| item.src.includes("/site-presence-tracker.js"),
 		);
 		return current ? current.src : null;
 	}
 
-	// Если сайт подключил скрипт через /metrics-api, websocket строим от того же префикса.
-	// Это сохраняет работу и за reverse proxy, и при прямом localhost-запуске.
+	// WebSocket строится от явно заданного metrics origin. Если конфигурации нет,
+	// тот же origin выводится из URL самого tracker-скрипта.
 	function getDefaultWebsocketUrl() {
 		const metricsBaseUrl =
 			config.metricsBaseUrl || config.apiBaseUrl || getInferredMetricsBaseUrl();

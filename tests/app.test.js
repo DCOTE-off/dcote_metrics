@@ -8,7 +8,8 @@ import { getRuntimeConfig } from "../src/runtimeConfig.js";
 function createConfig(overrides = {}) {
 	return {
 		...getRuntimeConfig({
-			METRICS_ALLOWED_ORIGINS: "https://dcote.net",
+			METRICS_ALLOWED_ORIGINS:
+				"https://dcote.net,https://video.dcote.net",
 			METRICS_AUTH_TOKEN_FILE: "Z:/missing/metrics-token",
 			ANALYTICS_DATABASE_PATH: ":memory:",
 		}),
@@ -35,6 +36,11 @@ test("player and health stay available when optional services are absent", async
 	const player = await app.inject({ method: "GET", url: "/videoplayer" });
 	assert.equal(player.statusCode, 200);
 	assert.doesNotMatch(player.body, /cdn\.jsdelivr\.net/);
+	assert.match(player.body, /<base href="\/videoplayer\/" \/>/);
+	assert.match(
+		player.body,
+		/data-metrics-base-url="https:\/\/metrics-api\.dcote\.net"/,
+	);
 	const playerStyleUrl = player.body.match(
 		/href="(player\.css\?v=[a-f0-9]+)"/,
 	)?.[1];
@@ -59,11 +65,21 @@ test("player and health stay available when optional services are absent", async
 	for (const [url, contentType, marker] of [
 		[`/${playerStyleUrl}`, "text/css", "#player-container"],
 		[
+			`/videoplayer/${playerStyleUrl}`,
+			"text/css",
+			"#player-container",
+		],
+		[
 			`/metrics-api/${playerStyleUrl}`,
 			"text/css",
 			"#player-container",
 		],
 		[`/${playerScriptUrl}`, "application/javascript", "destroyPlayerSession"],
+		[
+			`/videoplayer/${playerScriptUrl}`,
+			"application/javascript",
+			"destroyPlayerSession",
+		],
 		[
 			`/metrics-api/${playerScriptUrl}`,
 			"application/javascript",
@@ -71,6 +87,11 @@ test("player and health stay available when optional services are absent", async
 		],
 		[
 			`/${playerSubtitlesScriptUrl}`,
+			"application/javascript",
+			"syncPresentationTextDisplayer",
+		],
+		[
+			`/videoplayer/${playerSubtitlesScriptUrl}`,
 			"application/javascript",
 			"syncPresentationTextDisplayer",
 		],
@@ -90,13 +111,16 @@ test("player and health stay available when optional services are absent", async
 		assert.match(asset.headers.etag, /^"[a-f0-9]{16}"$/);
 		assert.match(asset.body, new RegExp(marker));
 	}
-	assert.equal(
-		(await app.inject({
-			method: "GET",
-			url: "/vendor/shaka/shaka-player.ui.js",
-		})).statusCode,
-		200,
-	);
+	for (const url of [
+		"/vendor/shaka/shaka-player.ui.js",
+		"/videoplayer/vendor/shaka/shaka-player.ui.js",
+		"/videoplayer/icons/file-x.svg",
+	]) {
+		assert.equal(
+			(await app.inject({ method: "GET", url })).statusCode,
+			200,
+		);
+	}
 	const shakaStyle = await app.inject({
 		method: "GET",
 		url: "/vendor/shaka/controls.css",
@@ -105,8 +129,9 @@ test("player and health stay available when optional services are absent", async
 	assert.doesNotMatch(shakaStyle.body, /fonts\.gstatic\.com|fonts\.googleapis\.com/);
 	for (const url of [
 		`/vendor/jassub/jassub.js?v=${jassubVersion}`,
+		`/videoplayer/vendor/jassub/jassub.js?v=${jassubVersion}`,
 		`/metrics-api/vendor/jassub/jassub-worker.wasm?v=${jassubVersion}`,
-		`/fonts/vag-rounded-next-bold.woff2?v=${subtitleFontVersion}`,
+		`/videoplayer/fonts/vag-rounded-next-bold.woff2?v=${subtitleFontVersion}`,
 	]) {
 		const asset = await app.inject({ method: "GET", url });
 		assert.equal(asset.statusCode, 200);
@@ -208,6 +233,34 @@ test("scrape token, origins, labels and bounded overflow series are enforced", a
 		payload: { season: "1", episode: "1", voice: "A" },
 	});
 	assert.equal(disallowed.statusCode, 403);
+	assert.equal(disallowed.headers["access-control-allow-origin"], undefined);
+
+	const preflight = await app.inject({
+		method: "OPTIONS",
+		url: "/metrics/view-labels",
+		headers: {
+			origin: "https://video.dcote.net",
+			"access-control-request-method": "POST",
+			"access-control-request-headers": "content-type",
+		},
+	});
+	assert.equal(preflight.statusCode, 204);
+	assert.equal(
+		preflight.headers["access-control-allow-origin"],
+		"https://video.dcote.net",
+	);
+	assert.equal(
+		preflight.headers["access-control-allow-credentials"],
+		"true",
+	);
+	assert.equal(
+		preflight.headers["access-control-allow-methods"],
+		"POST, OPTIONS",
+	);
+	assert.equal(
+		preflight.headers["access-control-allow-headers"],
+		"Content-Type",
+	);
 
 	const invalid = await app.inject({
 		method: "POST",
@@ -224,6 +277,20 @@ test("scrape token, origins, labels and bounded overflow series are enforced", a
 		payload: { season: "1", episode: "1", voice: "A" },
 	});
 	assert.equal(first.statusCode, 200);
+	assert.equal(
+		first.headers["access-control-allow-origin"],
+		"https://dcote.net",
+	);
+	const beaconCompatible = await app.inject({
+		method: "POST",
+		url: "/metrics/view-labels",
+		headers: {
+			origin: "https://video.dcote.net",
+			"content-type": "text/plain;charset=UTF-8",
+		},
+		payload: JSON.stringify({ season: "1", episode: "1", voice: "A" }),
+	});
+	assert.equal(beaconCompatible.statusCode, 200);
 	const overflow = await app.inject({
 		method: "POST",
 		url: "/metrics/view-labels",
@@ -313,4 +380,31 @@ test("site presence websocket accepts bounded valid messages", async (t) => {
 		visitAcknowledged: "visit-test",
 		pageViewAcknowledged: "page-view-test",
 	});
+});
+
+test("player websocket accepts the separate video origin", async (t) => {
+	const app = await buildApp({
+		config: createConfig(),
+		logger: false,
+		initializeGeoDatabase: false,
+	});
+	await app.listen({ host: "127.0.0.1", port: 0 });
+	t.after(() => app.close());
+	const address = app.server.address();
+	const socket = new WebSocket(
+		`ws://127.0.0.1:${address.port}/metrics/ws`,
+		{ headers: { Origin: "https://video.dcote.net" } },
+	);
+	t.after(() => socket.close());
+
+	await new Promise((resolve, reject) => {
+		socket.once("open", resolve);
+		socket.once("error", reject);
+	});
+	socket.send("{}");
+	const response = await new Promise((resolve, reject) => {
+		socket.once("message", (message) => resolve(JSON.parse(message)));
+		socket.once("error", reject);
+	});
+	assert.deepEqual(response, { ok: true });
 });

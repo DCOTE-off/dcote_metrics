@@ -11,15 +11,16 @@ const workerPath = new URL(
 	import.meta.url,
 );
 
-test("JASSUB worker keeps hardware renderers and the Canvas2D fallback", async () => {
+test("JASSUB worker uses Canvas2D to preserve a transparent video overlay", async () => {
 	const [buildScript, worker] = await Promise.all([
 		readFile(buildScriptPath, "utf8"),
 		readFile(workerPath, "utf8"),
 	]);
 
-	assert.doesNotMatch(buildScript, /force-jassub-canvas-2d-renderer/);
-	assert.doesNotMatch(buildScript, /webgl\[12\]-renderer\\\.js/);
+	assert.match(buildScript, /force-jassub-canvas-2d-renderer/);
+	assert.match(buildScript, /webgl\[12\]-renderer\\\.js/);
+	assert.match(buildScript, /Canvas2DRenderer as \$\{rendererName\}/);
+	assert.doesNotMatch(buildScript, /source\.replace|rendererSelection/);
 	assert.match(worker, /new Canvas2DRenderer\(\)/);
-	assert.match(worker, /new WebGL1Renderer\(\)/);
-	assert.match(worker, /new WebGL2Renderer\(\)/);
+	assert.doesNotMatch(worker, /new WebGL[12]Renderer\(\)/);
 });

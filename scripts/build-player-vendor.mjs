@@ -1,10 +1,38 @@
 import { copyFile, mkdir } from "fs/promises";
-import { join, resolve } from "path";
+import { dirname, join, resolve } from "path";
 import { build } from "esbuild";
 
 const projectRoot = resolve(import.meta.dirname, "..");
 const jassubRoot = join(projectRoot, "node_modules", "jassub");
 const outputDir = join(projectRoot, "public", "vendor", "jassub");
+
+// JASSUB's WebGL overlay can become an opaque black hardware layer on some
+// browser/GPU combinations, hiding the video underneath it. Keep libass and
+// WASM unchanged, but use the library's Canvas2D compositor for predictable
+// alpha blending over hardware-decoded video.
+const forceCanvas2DRendererPlugin = {
+	name: "force-jassub-canvas-2d-renderer",
+	setup(buildContext) {
+		buildContext.onLoad(
+			{
+				filter:
+					/[\\/]jassub[\\/]dist[\\/]worker[\\/]renderers[\\/]webgl[12]-renderer\.js$/,
+			},
+			({ path }) => {
+				const rendererName = path.includes("webgl2")
+					? "WebGL2Renderer"
+					: "WebGL1Renderer";
+				return {
+					contents:
+						`export { Canvas2DRenderer as ${rendererName} } `
+						+ 'from "./2d-renderer.js";',
+					loader: "js",
+					resolveDir: dirname(path),
+				};
+			},
+		);
+	},
+};
 
 await mkdir(outputDir, { recursive: true });
 
@@ -26,6 +54,7 @@ await Promise.all([
 		platform: "browser",
 		target: "es2022",
 		legalComments: "eof",
+		plugins: [forceCanvas2DRendererPlugin],
 	}),
 ]);
 

@@ -21,7 +21,7 @@ docker compose config
 
 ### Как устроены Grafana и metrics API?
 
-В этой системе есть две разные части:
+В production есть три разные публичные границы:
 
 ```text
 https://metrics.dcote.net/dashboards
@@ -31,11 +31,19 @@ https://metrics.dcote.net/dashboards
 сайта или плеера.
 
 ```text
-https://video.dcote.net/metrics-api
+https://video.dcote.net/videoplayer
+https://video.dcote.net/season-*
 ```
 
-Это публичный адрес metrics API из этого репозитория. В `docker-compose.yml`
-этот сервис называется `backend`, а запускается он через `src/index.js`.
+Это плеер и существующий video/HLS proxy. Плеер и его scoped-ресурсы лежат
+под `/videoplayer`, а маршруты `/season-*` остаются без изменений.
+
+```text
+https://metrics-api.dcote.net
+```
+
+Это публичный metrics API из этого репозитория. В `docker-compose.yml` сервис
+называется `backend`, а запускается через `src/index.js`.
 
 Именно этот `backend` принимает события от сайта/плеера, отдаёт метрики для
 Prometheus и раздаёт скрипт трекера активности сайта:
@@ -43,11 +51,14 @@ Prometheus и раздаёт скрипт трекера активности с
 ```text
 контейнер backend:        backend:3000
 порт backend на сервере:  http://localhost:7654
-публичный адрес backend:  https://video.dcote.net/metrics-api
+публичный metrics API:    https://metrics-api.dcote.net
 ```
 
-Поэтому на основном сайте скрипты и WebSocket для статистики должны обращаться
-к `video.dcote.net/metrics-api`, а не к `metrics.dcote.net/dashboards`.
+Скрипты, HTTP-события и WebSocket статистики обращаются к
+`metrics-api.dcote.net`. Плеер остаётся на `video.dcote.net`, но получает
+metrics origin через `METRICS_PUBLIC_BASE_URL`.
+
+Точный reverse-proxy контракт описан в `docs/public-routing.md`.
 
 Метрика для аниме.
 
@@ -120,19 +131,15 @@ they cannot reconstruct the original event timestamps or arbitrary range
 boundaries. Preserve an existing Prometheus volume if its legacy sampled
 history is still needed during the transition.
 
-### И костыльный стейдж в плеер
-```js
-//В самом файле плеера
-const stage = "prod";
-const backendUrl =
-    stage == "dev"
-        ? "http://localhost:7654"
-        : "https://video.dcote.net/metrics-api";
-const websocketUrl =
-    stage == "dev"
-        ? "ws://localhost:7654/metrics/ws"
-        : "wss://video.dcote.net/metrics-api/metrics/ws";
+### Public URL плеера
+
+Backend вставляет metrics origin в HTML плеера из переменной окружения:
+
+```env
+METRICS_PUBLIC_BASE_URL=https://metrics-api.dcote.net
 ```
+
+В development плеер с `?stage=dev` использует свой локальный origin.
 
 ### Метрики активности сайта
 
@@ -140,16 +147,16 @@ const websocketUrl =
 адреса metrics API:
 
 ```text
-https://video.dcote.net/metrics-api/site-presence-tracker.js
+https://metrics-api.dcote.net/site-presence-tracker.js
 ```
 
 После подключения скрипт сам открывает WebSocket:
 
 ```text
-wss://video.dcote.net/metrics-api/metrics/site/ws
+wss://metrics-api.dcote.net/metrics/site/ws
 ```
 
-Внутри контейнера эти публичные URL после nginx rewrite попадают в такие route:
+Reverse proxy передаёт эти URL в одноимённые внутренние route:
 
 ```text
 GET /site-presence-tracker.js
@@ -161,7 +168,7 @@ WS  /metrics/site/ws
 ```blade
 <script>
 	window.DCOTE_SITE_METRICS = {
-		metricsBaseUrl: "https://video.dcote.net/metrics-api",
+		metricsBaseUrl: "https://metrics-api.dcote.net",
 		userId: @json(
 			auth()->check()
 				? hash_hmac('sha256', (string) auth()->id(), (string) config('app.key'))
@@ -170,5 +177,5 @@ WS  /metrics/site/ws
 		page: @json(request()->route()?->getName() ?? request()->route()?->uri() ?? request()->path()),
 	};
 </script>
-<script defer src="https://video.dcote.net/metrics-api/site-presence-tracker.js"></script>
+<script defer src="https://metrics-api.dcote.net/site-presence-tracker.js"></script>
 ```

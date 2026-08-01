@@ -118,6 +118,19 @@ async function buildApp(options = {}) {
 		{ parseAs: "string" },
 		(req, body, done) => done(null, new URLSearchParams(body)),
 	);
+	app.addContentTypeParser(
+		"text/plain",
+		{ parseAs: "string" },
+		(req, body, done) => {
+			try {
+				done(null, JSON.parse(body));
+			} catch {
+				const error = new Error("Invalid JSON payload");
+				error.statusCode = 400;
+				done(error);
+			}
+		},
+	);
 	await app.register(fastifyCompress, {
 		global: true,
 		threshold: 1024,
@@ -341,7 +354,8 @@ async function buildApp(options = {}) {
 				'<script defer src="player.js"></script>',
 				`<script defer src="player.js?v=${playerScriptAsset.version}" `
 				+ `data-jassub-version="${jassubVersion}" `
-				+ `data-subtitle-font-version="${subtitleFontAsset.version}">`
+				+ `data-subtitle-font-version="${subtitleFontAsset.version}" `
+				+ `data-metrics-base-url="${config.publicMetricsBaseUrl}">`
 				+ "</script>",
 			)
 			.replace(
@@ -390,12 +404,14 @@ async function buildApp(options = {}) {
 		reply.header("Cache-Control", "no-store");
 		reply.header(
 			"Content-Security-Policy",
-			`frame-ancestors 'self' ${[...config.allowedOrigins].join(" ")}`,
+			`base-uri 'self'; frame-ancestors 'self' `
+			+ [...config.allowedOrigins].join(" "),
 		);
 		reply.type("text/html");
 		return reply.send(videoPlayerFile);
 	}
 	app.get("/videoplayer", sendVideoPlayer);
+	app.get("/videoplayer/", sendVideoPlayer);
 
 	function sendStaticAsset(req, reply, asset) {
 		const selectedRepresentation = selectStaticRepresentation(req, asset);
@@ -440,14 +456,17 @@ async function buildApp(options = {}) {
 	}
 	registerGetAliases([
 		"/player.css",
+		"/videoplayer/player.css",
 		"/metrics-api/player.css",
 	], createStaticAssetHandler(playerStyleAsset), { compress: false });
 	registerGetAliases([
 		"/player.js",
+		"/videoplayer/player.js",
 		"/metrics-api/player.js",
 	], createStaticAssetHandler(playerScriptAsset), { compress: false });
 	registerGetAliases([
 		"/player-subtitles.js",
+		"/videoplayer/player-subtitles.js",
 		"/metrics-api/player-subtitles.js",
 	], createStaticAssetHandler(playerSubtitlesScriptAsset), {
 		compress: false,
@@ -458,6 +477,7 @@ async function buildApp(options = {}) {
 	}
 	registerGetAliases([
 		"/fonts/vag-rounded-next-bold.woff2",
+		"/videoplayer/fonts/vag-rounded-next-bold.woff2",
 		"/metrics-api/fonts/vag-rounded-next-bold.woff2",
 	], sendSubtitleFont, { compress: false });
 
@@ -469,6 +489,7 @@ async function buildApp(options = {}) {
 	}
 	registerGetAliases([
 		"/vendor/jassub/:file",
+		"/videoplayer/vendor/jassub/:file",
 		"/metrics-api/vendor/jassub/:file",
 	], sendJassubVendorAsset, { compress: false });
 
@@ -480,6 +501,7 @@ async function buildApp(options = {}) {
 	}
 	registerGetAliases([
 		"/vendor/shaka/:file",
+		"/videoplayer/vendor/shaka/:file",
 		"/metrics-api/vendor/shaka/:file",
 	], sendShakaVendorAsset, { compress: false });
 
@@ -497,6 +519,7 @@ async function buildApp(options = {}) {
 	}
 	registerGetAliases([
 		"/icons/file-x.svg",
+		"/videoplayer/icons/file-x.svg",
 		"/metrics-api/icons/file-x.svg",
 	], sendFileXIcon, { compress: false });
 

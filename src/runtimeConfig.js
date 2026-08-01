@@ -4,11 +4,14 @@ const DEFAULT_ALLOWED_ORIGINS = [
 	"https://dcote.net",
 	"https://www.dcote.net",
 	"https://video.dcote.net",
+	"https://metrics-api.dcote.net",
 	"http://localhost:3000",
 	"http://127.0.0.1:3000",
 	"http://localhost:7654",
 	"http://127.0.0.1:7654",
 ];
+
+const DEFAULT_PUBLIC_METRICS_BASE_URL = "https://metrics-api.dcote.net";
 
 const DEFAULT_TRUSTED_PROXIES = [
 	"127.0.0.1",
@@ -41,6 +44,23 @@ function parseTrustProxy(value) {
 	return parseCsv(value, DEFAULT_TRUSTED_PROXIES);
 }
 
+function getPublicHttpBaseUrl(value, fallback = DEFAULT_PUBLIC_METRICS_BASE_URL) {
+	try {
+		const url = new URL(value || fallback);
+		if (url.protocol !== "http:" && url.protocol !== "https:") {
+			return fallback;
+		}
+		url.username = "";
+		url.password = "";
+		url.search = "";
+		url.hash = "";
+		url.pathname = url.pathname.replace(/\/+$/, "");
+		return url.href.replace(/\/$/, "");
+	} catch {
+		return fallback;
+	}
+}
+
 function getRuntimeConfig(env = process.env) {
 	return {
 		host: env.HOST || "0.0.0.0",
@@ -51,6 +71,9 @@ function getRuntimeConfig(env = process.env) {
 			env.METRICS_ALLOWED_ORIGINS,
 			DEFAULT_ALLOWED_ORIGINS,
 		)),
+		publicMetricsBaseUrl: getPublicHttpBaseUrl(
+			env.METRICS_PUBLIC_BASE_URL,
+		),
 		metricsAuthToken: env.METRICS_AUTH_TOKEN?.trim() || null,
 		metricsAuthTokenFile:
 			env.METRICS_AUTH_TOKEN_FILE || "/run/secrets/metrics_auth_token",
@@ -115,7 +138,9 @@ async function loadMetricsAuthToken(config, onError = () => {}) {
 
 export {
 	DEFAULT_ALLOWED_ORIGINS,
+	DEFAULT_PUBLIC_METRICS_BASE_URL,
 	getPositiveInteger,
+	getPublicHttpBaseUrl,
 	getRuntimeConfig,
 	loadMetricsAuthToken,
 };

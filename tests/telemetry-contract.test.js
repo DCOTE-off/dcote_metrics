@@ -49,6 +49,7 @@ test("player measures active playback and reports one completed duration", async
 	assert.match(player, /listen\(window, "online", \(\) =>/);
 	assert.match(player, /flushMetricRetryQueue\(\)/);
 	assert.match(player, /navigator\.sendBeacon\(url, blob\) \|\| retryQueued/);
+	assert.match(player, /type: "text\/plain;charset=UTF-8"/);
 	assert.doesNotMatch(player, /if \(queued\) viewingTime\.watchedSeconds = 0/);
 	assert.match(
 		player,
@@ -99,7 +100,7 @@ test("ASS is lazy, always uses VAG and stops rendering while hidden", async () =
 	assert.match(player, /cancelAnimationFrame\(animationFrameId\)/);
 	assert.match(player, /ASS_RENDERER_IDLE_TIMEOUT_MS/);
 	assert.match(player, /queryFonts: false/);
-	assert.match(player, /fonts: \[\]/);
+	assert.match(player, /fonts: \[subtitleFontUrl\]/);
 	assert.match(player, /defaultFont: "vag rounded next"/);
 	assert.doesNotMatch(player, /ass_font|fontUrls/);
 	assert.doesNotMatch(player, /\.renderer\.setEvent\(/);
@@ -113,11 +114,14 @@ test("player derives production assets from its served route", async () => {
 		readFile(playerStylePath, "utf8"),
 	]);
 
-	assert.match(player, /const documentBaseUrl = new URL\("\.", location\.href\)/);
-	assert.match(player, /const inferredBackendUrl = documentBaseUrl\.href/);
+	assert.match(player, /const playerAssetBaseUrl = new URL\(/);
+	assert.match(player, /playerScriptElement\?\.src \|\| document\.baseURI/);
+	assert.match(player, /const metricsBaseUrl =/);
+	assert.match(player, /https:\/\/metrics-api\.dcote\.net/);
 	assert.match(player, /playerScriptElement\?\.dataset\.jassubVersion/);
 	assert.match(player, /playerScriptElement\?\.dataset\.subtitleFontVersion/);
 	assert.match(styles, /src: url\("fonts\/vag-rounded-next-bold\.woff2"\)/);
+	assert.match(markup, /<base href="\/videoplayer\/" \/>/);
 	assert.match(markup, /<script defer src="vendor\/shaka\/shaka-player\.ui\.js">/);
 	assert.match(markup, /<link rel="stylesheet" href="player\.css" \/>/);
 	assert.match(markup, /<script defer src="player\.js"><\/script>/);
