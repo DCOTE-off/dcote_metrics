@@ -1,19 +1,28 @@
 import { isIP } from "node:net";
 
+import { isBearerTokenAuthenticated } from "../metrics/security.js";
+
 const SELECTOR_PATTERN = /^\s*([a-zA-Z_:][a-zA-Z0-9_:]*)\s*\{([^}]*)\}\s*$/;
 const LABEL_PATTERN = /([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*"((?:\\.|[^"])*)"\s*(?:,|$)/g;
 
+// Предыдущая версия для всего, что не IPv4, возвращала
+// startsWith("fc"|"fd") — то есть строки вроде "fdsa" считались внутренними.
+// Адрес обязан быть разобран как IP, иначе он не внутренний.
 function isInternalAddress(value) {
-	const address = String(value || "").replace(/^::ffff:/, "");
-	if (address === "::1" || address === "127.0.0.1") return true;
-	if (isIP(address) !== 4) {
-		return address.startsWith("fc") || address.startsWith("fd");
+	const raw = String(value ?? "").trim().replace(/^::ffff:/i, "");
+	const version = isIP(raw);
+	if (version === 4) {
+		const octets = raw.split(".").map(Number);
+		return octets[0] === 10
+			|| octets[0] === 127
+			|| (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31)
+			|| (octets[0] === 192 && octets[1] === 168);
 	}
-	const octets = address.split(".").map(Number);
-	return octets[0] === 10
-		|| octets[0] === 127
-		|| (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31)
-		|| (octets[0] === 192 && octets[1] === 168);
+	if (version !== 6) return false;
+	const address = raw.toLowerCase().split("%")[0];
+	if (address === "::1") return true;
+	// fc00::/7 — уникальные локальные адреса: первый байт 0xfc или 0xfd.
+	return /^f[cd][0-9a-f]{2}:/.test(address);
 }
 
 function parseSelector(query) {
@@ -24,7 +33,13 @@ function parseSelector(query) {
 	for (const labelMatch of match[2].matchAll(LABEL_PATTERN)) {
 		const leading = match[2].slice(consumed, labelMatch.index);
 		if (leading.trim()) return null;
-		labels[labelMatch[1]] = JSON.parse(`"${labelMatch[2]}"`);
+		// LABEL_PATTERN пропускает любой \., поэтому неверный escape вроде
+		// {a="\x"} доходил сюда и выбрасывал SyntaxError мимо обработчика.
+		try {
+			labels[labelMatch[1]] = JSON.parse(`"${labelMatch[2]}"`);
+		} catch {
+			return null;
+		}
 		consumed = labelMatch.index + labelMatch[0].length;
 	}
 	if (match[2].slice(consumed).trim()) return null;
@@ -121,14 +136,32 @@ function registerCompatibilityRoutes(app) {
 async function analyticsPrometheusApi(app, options) {
 	const store = options.store;
 	if (!store) throw new Error("Analytics store is required");
+	const authToken = options.authToken || null;
 
 	app.addHook("onRequest", async (req, reply) => {
-		if (isInternalAddress(req.ip)) return;
-		return reply.code(403).send({
-			status: "error",
-			errorType: "forbidden",
-			error: "Analytics API is available only inside the metrics network",
-		});
+		if (!authToken) {
+			return reply.code(503).send({
+				status: "error",
+				errorType: "unavailable",
+				error: "Analytics API is not configured",
+			});
+		}
+		// req.ip следует за X-Forwarded-For, поэтому ACL опирается на
+		// фактического пира сокета: заголовок подделывает любой клиент.
+		if (!isInternalAddress(req.socket?.remoteAddress ?? req.ip)) {
+			return reply.code(403).send({
+				status: "error",
+				errorType: "forbidden",
+				error: "Analytics API is available only inside the metrics network",
+			});
+		}
+		if (!isBearerTokenAuthenticated(req, authToken)) {
+			return reply.code(403).send({
+				status: "error",
+				errorType: "forbidden",
+				error: "Analytics API requires the metrics auth token",
+			});
+		}
 	});
 
 	registerCompatibilityRoutes(app);

@@ -179,6 +179,8 @@ test("analytics persists deduplication and exact presence extrema", () => {
 	}
 });
 
+const ANALYTICS_TOKEN = "analytics-test-secret";
+
 test("Grafana-compatible analytics API returns vectors and bounded matrices", async (t) => {
 	const store = createAnalyticsStore({ path: ":memory:", now: START });
 	record(
@@ -199,6 +201,7 @@ test("Grafana-compatible analytics API returns vectors and bounded matrices", as
 		analyticsStore: store,
 		logger: false,
 		initializeGeoDatabase: false,
+		metricsAuthToken: ANALYTICS_TOKEN,
 	});
 	t.after(async () => {
 		await app.close();
@@ -212,7 +215,10 @@ test("Grafana-compatible analytics API returns vectors and bounded matrices", as
 	const response = await app.inject({
 		method: "POST",
 		url: "/analytics/api/v1/query",
-		headers: { "content-type": "application/x-www-form-urlencoded" },
+		headers: {
+			"content-type": "application/x-www-form-urlencoded",
+			authorization: `Bearer ${ANALYTICS_TOKEN}`,
+		},
 		payload: query.toString(),
 	});
 	assert.equal(response.statusCode, 200);
@@ -227,7 +233,10 @@ test("Grafana-compatible analytics API returns vectors and bounded matrices", as
 	const rangeResponse = await app.inject({
 		method: "POST",
 		url: "/analytics/api/v1/query_range",
-		headers: { "content-type": "application/x-www-form-urlencoded" },
+		headers: {
+			"content-type": "application/x-www-form-urlencoded",
+			authorization: `Bearer ${ANALYTICS_TOKEN}`,
+		},
 		payload: rangeQuery.toString(),
 	});
 	assert.equal(rangeResponse.statusCode, 200);

@@ -13,12 +13,31 @@ import { readFile, stat } from "fs/promises";
 
 import { analyticsPrometheusApi } from "./analytics/prometheusApi.js";
 import { createAnalyticsStore } from "./analytics/store.js";
-import metricsRoute, { createMetricsRuntime } from "./metrics/router.js";
+import metricsRoute, {
+	MAX_WEBSOCKET_MESSAGE_BYTES,
+	createMetricsRuntime,
+} from "./metrics/router.js";
 import { initializeCountryLookup } from "./metrics/maxmind.js";
 import { configureSitePresence } from "./metrics/sitePresence.js";
 import { getRuntimeConfig, loadMetricsAuthToken } from "./runtimeConfig.js";
 
 const jsonError = (error) => ({ error });
+const HTML_ATTRIBUTE_ESCAPES = new Map([
+	["&", "&amp;"],
+	["<", "&lt;"],
+	[">", "&gt;"],
+	['"', "&quot;"],
+	["'", "&#39;"],
+]);
+
+// Значения из env попадают в HTML-атрибуты документа плеера: без
+// экранирования METRICS_PUBLIC_BASE_URL с кавычкой разрывает тег.
+function escapeHtmlAttribute(value) {
+	return String(value).replace(
+		/[&<>"']/g,
+		(character) => HTML_ATTRIBUTE_ESCAPES.get(character),
+	);
+}
 const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
 const REVALIDATE_CACHE_CONTROL = "public, max-age=0, must-revalidate";
 const STATIC_COMPRESSION_THRESHOLD = 1024;
@@ -113,6 +132,9 @@ async function buildApp(options = {}) {
 		trustProxy: config.trustProxy,
 		bodyLimit: 16 * 1024,
 	});
+	for (const warning of config.configWarnings || []) {
+		app.log.warn({ warning }, "Runtime configuration was adjusted");
+	}
 	app.addContentTypeParser(
 		"application/x-www-form-urlencoded",
 		{ parseAs: "string" },
@@ -353,9 +375,11 @@ async function buildApp(options = {}) {
 			.replace(
 				'<script defer src="player.js"></script>',
 				`<script defer src="player.js?v=${playerScriptAsset.version}" `
-				+ `data-jassub-version="${jassubVersion}" `
-				+ `data-subtitle-font-version="${subtitleFontAsset.version}" `
-				+ `data-metrics-base-url="${config.publicMetricsBaseUrl}">`
+				+ `data-jassub-version="${escapeHtmlAttribute(jassubVersion)}" `
+				+ "data-subtitle-font-version="
+				+ `"${escapeHtmlAttribute(subtitleFontAsset.version)}" `
+				+ "data-metrics-base-url="
+				+ `"${escapeHtmlAttribute(config.publicMetricsBaseUrl)}">`
 				+ "</script>",
 			)
 			.replace(
@@ -541,10 +565,15 @@ async function buildApp(options = {}) {
 		return reply.send(createReadStream(asset.filePath));
 	});
 
-	await app.register(fastifyWebsocket);
+	// Без явного maxPayload ws буферизует кадр целиком (по умолчанию до
+	// 100 МиБ) и только потом отдаёт его проверке размера в router.js.
+	await app.register(fastifyWebsocket, {
+		options: { maxPayload: MAX_WEBSOCKET_MESSAGE_BYTES },
+	});
 	await app.register(analyticsPrometheusApi, {
 		prefix: "/analytics",
 		store: analyticsStore,
+		authToken: metricsAuthToken,
 	});
 	await app.register(metricsRoute, { prefix: "/metrics", runtime });
 	await app.register(metricsRoute, {

@@ -116,6 +116,12 @@ The backend keeps exact received events and online-state changes in the
 `analytics_data` Docker volume. It does not run another database service.
 SQLite writes occur only for real events or presence value changes.
 
+The `/analytics` API that backs that datasource is not public: it answers only
+a peer address inside the private ranges **and** a request carrying
+`Authorization: Bearer <METRICS_AUTH_TOKEN>`. Grafana reads the same
+`metrics_auth_token` Docker secret as Prometheus, so no extra configuration is
+needed — but the reverse proxy must never forward `/analytics`.
+
 Grafana uses the internal `Dcote analytics` datasource for historical
 dashboard panels. Complete UTC days come from compact daily totals, while the
 first and last partial days use original events. This keeps arbitrary time

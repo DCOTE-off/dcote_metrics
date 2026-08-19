@@ -145,23 +145,41 @@ export function parseHlsDurations(playlist) {
 
 export function distributeVttCues(cues, durations) {
 	let segmentStart = 0;
-	return durations.map((duration, index) => {
+	const segments = durations.map((duration, index) => {
 		const start = segmentStart;
 		const end = start + duration;
 		segmentStart = end;
-		return {
-			index,
-			start,
-			end,
-			duration,
-			// RFC 8216 §3.5: каждый сегмент содержит полную реплику,
-			// предназначенную для показа в его периоде. Время не обрезается.
-			cues: cues.filter((cue) =>
-				cue.start < end - EPSILON
-				&& cue.end > start + EPSILON
-			),
-		};
+		return { index, start, end, duration, cues: [] };
 	});
+	const playlistDuration = segmentStart;
+	if (cues.length && !segments.length) {
+		throw new Error("The video playlist has no segment to place cues into");
+	}
+
+	for (const cue of cues) {
+		// RFC 8216 §3.5: каждый сегмент содержит полную реплику,
+		// предназначенную для показа в его периоде. Время не обрезается.
+		const overlapping = segments.filter((segment) =>
+			cue.start < segment.end - EPSILON
+			&& cue.end > segment.start + EPSILON
+		);
+		if (overlapping.length) {
+			for (const segment of overlapping) segment.cues.push(cue);
+			continue;
+		}
+		// Реплика короче EPSILON или лежащая ровно на стыке сегментов
+		// не перекрывает ни один период с запасом. Она обязана попасть
+		// в сегмент по своей середине, а не исчезнуть без следа.
+		const midpoint = Math.min(
+			Math.max((cue.start + cue.end) / 2, 0),
+			Math.max(playlistDuration - EPSILON, 0),
+		);
+		const fallback = segments.find(
+			(segment) => midpoint >= segment.start && midpoint < segment.end,
+		) || segments.at(-1);
+		fallback.cues.push(cue);
+	}
+	return segments;
 }
 
 export function formatVttSegment(
@@ -232,6 +250,16 @@ export async function packageVttHls({
 		);
 	}
 	const segments = distributeVttCues(cues, durations);
+	const placedCues = new Set(segments.flatMap((segment) => segment.cues));
+	const droppedCues = cues.filter((cue) => !placedCues.has(cue));
+	if (droppedCues.length) {
+		const [first] = droppedCues;
+		throw new Error(
+			`${droppedCues.length} WebVTT cue(s) reached no segment, `
+			+ `starting at ${formatVttTimestamp(first.start)} --> `
+			+ formatVttTimestamp(first.end),
+		);
+	}
 	const outputDirectory = dirname(outputPlaylistPath);
 	await mkdir(outputDirectory, { recursive: true });
 	const temporaryDirectory = await mkdtemp(

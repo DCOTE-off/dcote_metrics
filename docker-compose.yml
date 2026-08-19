@@ -78,6 +78,8 @@ services:
             GF_SERVER_SERVE_FROM_SUB_PATH: ${GF_SERVER_SERVE_FROM_SUB_PATH:-true}
             GF_DATAPROXY_TIMEOUT: 300
             GF_PLUGINS_PREINSTALL_DISABLED: "true"
+        secrets:
+            - metrics_auth_token
         volumes:
             - ./grafana/provisioning:/etc/grafana/provisioning:ro
         depends_on:

@@ -3,6 +3,9 @@
 const playerParams = new URLSearchParams(location.search);
 const playerScriptElement = document.currentScript;
 const VIEW_METRIC_THRESHOLD_SECONDS = 30;
+// MAX_METRIC_SECONDS в src/metrics/router.js: значение выше backend отвергает
+// с 400, а событие навсегда оседало в очереди повторов.
+const VIEW_METRIC_MAX_SECONDS = 6 * 60 * 60;
 const MOBILE_ABR_MAX_HEIGHT = 720;
 const DESKTOP_ABR_MAX_HEIGHT = 1080;
 // Высокая стартовая оценка заставляет ABR выбрать верхний вариант в пределах
@@ -158,6 +161,7 @@ const LEGACY_METRIC_RETRY_QUEUE_KEY = "dcote.metrics.pending.v1";
 const METRIC_RETRY_QUEUE_PREFIX = "dcote.metrics.pending.v2.";
 const METRIC_RETRY_QUEUE_LIMIT = 100;
 const METRIC_RETRY_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const NON_RETRYABLE_METRIC_STATUSES = new Set([400, 413, 422]);
 let metricRetryFlushPromise = null;
 
 function getMetricRetryKey(path, eventId) {
@@ -275,6 +279,12 @@ async function postJsonMetric(path, payload) {
 		keepalive: true,
 	});
 	if (!response.ok) {
+		// Событие не станет валидным при повторе только когда его отверг
+		// сам обработчик. 401/403/404 обычно означают ошибку в конфиге
+		// прокси или origin — их чинят, и очередь должна это пережить.
+		if (NON_RETRYABLE_METRIC_STATUSES.has(response.status)) {
+			acknowledgeMetricRetry(path, payload.eventId);
+		}
 		throw new Error(`Metric request failed: ${response.status}`);
 	}
 	acknowledgeMetricRetry(path, payload.eventId);
@@ -393,6 +403,9 @@ function getViewingTimeSeconds() {
 		(viewingTime.watchedMilliseconds + activeMilliseconds) / 1000,
 	);
 }
+function toReportableSeconds(seconds) {
+	return Math.min(Math.max(Math.floor(seconds), 0), VIEW_METRIC_MAX_SECONDS);
+}
 const metricDatas = {
 	season: null,
 	episode: null,
@@ -474,7 +487,7 @@ function sendViewStartedMetric() {
 
 	const queued = sendJsonMetric("view-started", {
 		eventId: viewStartedMetric.eventId,
-		seconds,
+		seconds: toReportableSeconds(seconds),
 		...metricDatas,
 	});
 	if (queued) {
@@ -549,7 +562,7 @@ function sendSubtitleMetric() {
 
 	const queued = sendJsonMetric("subtitles", {
 		eventId: subtitleMetric.eventId,
-		seconds: Math.floor(getSubtitleMetricSeconds()),
+		seconds: toReportableSeconds(getSubtitleMetricSeconds()),
 		season: metricDatas.season,
 		episode: metricDatas.episode,
 	});
@@ -672,7 +685,7 @@ function flushViewingTimeMetric() {
 
 	const queued = sendJsonMetric("viewing-time", {
 		eventId: viewingTime.eventId,
-		seconds,
+		seconds: toReportableSeconds(seconds),
 		...metricDatas,
 	});
 	if (queued) viewingTime.reported = true;

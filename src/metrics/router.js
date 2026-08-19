@@ -1,5 +1,3 @@
-import { timingSafeEqual } from "crypto";
-
 import {
 	register,
 	activeViewers,
@@ -18,8 +16,10 @@ import {
 	createBoundedKeySet,
 	createFixedWindowRateLimiter,
 	getSeriesKey,
+	isBearerTokenAuthenticated,
 	isRequestOriginAllowed,
 	normalizeOrigin,
+	tokensMatch,
 } from "./security.js";
 
 const DEFAULT_COUNTRY_LABEL = "Other";
@@ -54,19 +54,8 @@ function parseWebsocketJsonMessage(message) {
 	}
 }
 
-function tokensMatch(candidate, expected) {
-	if (!candidate || !expected) return false;
-	const candidateBuffer = Buffer.from(candidate);
-	const expectedBuffer = Buffer.from(expected);
-	return candidateBuffer.length === expectedBuffer.length
-		&& timingSafeEqual(candidateBuffer, expectedBuffer);
-}
-
 function isMetricsRequestAuthenticated(req, token) {
-	const authorization = req.headers.authorization;
-	if (typeof authorization !== "string") return false;
-	const match = authorization.match(/^Bearer\s+(.+)$/i);
-	return tokensMatch(match?.[1], token);
+	return isBearerTokenAuthenticated(req, token);
 }
 
 function getMetricBody(req) {
@@ -451,6 +440,8 @@ export default async function metricsRoute(app, options) {
 }
 
 export {
+	MAX_METRIC_SECONDS,
+	MAX_WEBSOCKET_MESSAGE_BYTES,
 	createMetricsRuntime,
 	getAcceptedMetricLabels,
 	getValidMetricSeconds,

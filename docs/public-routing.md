@@ -10,7 +10,12 @@ Production separates video, player delivery, and telemetry by public URL.
 | `https://metrics-api.dcote.net/site-presence-tracker.js` | Site tracker |
 
 Grafana remains on `https://metrics.dcote.net/dashboards`. Prometheus and
-`/analytics` stay private on the Docker network.
+`/analytics` stay private on the Docker network: `/analytics` answers only a
+peer address inside the private ranges **and** a request carrying the shared
+`METRICS_AUTH_TOKEN` as `Authorization: Bearer <token>`. Both the Prometheus
+scrape job and the Grafana `Dcote analytics` datasource read that token from
+the `metrics_auth_token` Docker secret. Never expose `/analytics` through the
+public reverse proxy.
 
 ## Reverse proxy contract
 

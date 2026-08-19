@@ -2,7 +2,15 @@ import { buildApp } from "./app.js";
 import { getRuntimeConfig } from "./runtimeConfig.js";
 
 const config = getRuntimeConfig();
-const app = await buildApp({ config });
+let app;
+try {
+	app = await buildApp({ config });
+} catch (error) {
+	// buildApp падает до появления логгера, поэтому единственный способ
+	// оставить след в docker logs — писать в stderr напрямую.
+	console.error("Failed to build the metrics service:", error);
+	process.exit(1);
+}
 let shuttingDown = false;
 
 async function shutdown(signal) {

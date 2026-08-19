@@ -1,4 +1,7 @@
 import { readFile } from "fs/promises";
+import proxyAddr from "@fastify/proxy-addr";
+
+import { normalizeOrigin } from "./metrics/security.js";
 
 const DEFAULT_ALLOWED_ORIGINS = [
 	"https://dcote.net",
@@ -21,9 +24,18 @@ const DEFAULT_TRUSTED_PROXIES = [
 	"192.168.0.0/16",
 ];
 
+const TRUE_VALUES = new Set(["true", "1", "yes", "on", "enabled"]);
+const FALSE_VALUES = new Set(["false", "0", "no", "off", "disabled"]);
+
+// Number.parseInt останавливается на первом непонятном символе, поэтому
+// "1e4" превращалось в 1, а "8080abc" — в 8080. Значение env либо целиком
+// является целым числом, либо не годится и заменяется fallback.
 function getPositiveInteger(value, fallback, { min = 1, max = 1_000_000 } = {}) {
-	const parsed = Number.parseInt(value, 10);
-	if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+	if (value === null || value === undefined) return fallback;
+	const normalized = String(value).trim();
+	if (!normalized) return fallback;
+	const parsed = Number(normalized);
+	if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
 		return fallback;
 	}
 	return parsed;
@@ -37,11 +49,68 @@ function parseCsv(value, fallback) {
 		.filter(Boolean);
 }
 
-function parseTrustProxy(value) {
-	if (!value) return [...DEFAULT_TRUSTED_PROXIES];
-	if (value === "false") return false;
-	if (value === "true") return true;
-	return parseCsv(value, DEFAULT_TRUSTED_PROXIES);
+// Правила proxy-addr шире и строже самодельного разбора: он принимает
+// маски (10.0.0.0/255.0.0.0) и пресеты только в нижнем регистре, но
+// отвергает префикс /0. Любое расхождение самописного валидатора с
+// библиотекой снова роняло бы процесс на верхнем уровне src/index.js,
+// поэтому валидатором служит сама библиотека.
+function isTrustProxyList(entries) {
+	try {
+		proxyAddr.compile(entries);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+function parseTrustProxy(value, warn = () => {}) {
+	if (value === null || value === undefined) return [...DEFAULT_TRUSTED_PROXIES];
+	const normalized = String(value).trim();
+	if (!normalized) return [...DEFAULT_TRUSTED_PROXIES];
+	const lowered = normalized.toLowerCase();
+	if (TRUE_VALUES.has(lowered)) return true;
+	if (FALSE_VALUES.has(lowered)) return false;
+
+	const entries = parseCsv(normalized, DEFAULT_TRUSTED_PROXIES);
+	if (!entries.length) {
+		warn("TRUST_PROXY lists no usable proxy; using the defaults.");
+		return [...DEFAULT_TRUSTED_PROXIES];
+	}
+	if (!isTrustProxyList(entries)) {
+		warn(
+			"TRUST_PROXY is not a list proxy-addr accepts: "
+			+ `${entries.join(", ")}. Falling back to the defaults.`,
+		);
+		return [...DEFAULT_TRUSTED_PROXIES];
+	}
+	return entries;
+}
+
+// Сравнение идёт с new URL(origin).origin, поэтому список из env обязан
+// пройти ту же нормализацию: иначе "https://dcote.net/" в .env молча
+// отбрасывает всю телеметрию этого origin.
+function parseAllowedOrigins(value, warn = () => {}) {
+	const entries = parseCsv(value, DEFAULT_ALLOWED_ORIGINS);
+	const normalized = [];
+	const invalid = [];
+	for (const entry of entries) {
+		const origin = normalizeOrigin(entry);
+		if (origin) normalized.push(origin);
+		else invalid.push(entry);
+	}
+	if (invalid.length) {
+		warn(
+			`METRICS_ALLOWED_ORIGINS ignores unparsable entries: `
+			+ invalid.join(", "),
+		);
+	}
+	if (!normalized.length) {
+		warn(
+			"METRICS_ALLOWED_ORIGINS has no usable origin; using the defaults.",
+		);
+		return DEFAULT_ALLOWED_ORIGINS.map(normalizeOrigin);
+	}
+	return normalized;
 }
 
 function getPublicHttpBaseUrl(value, fallback = DEFAULT_PUBLIC_METRICS_BASE_URL) {
@@ -62,14 +131,18 @@ function getPublicHttpBaseUrl(value, fallback = DEFAULT_PUBLIC_METRICS_BASE_URL)
 }
 
 function getRuntimeConfig(env = process.env) {
+	const warnings = [];
+	const warn = (message) => warnings.push(message);
+
 	return {
+		configWarnings: warnings,
 		host: env.HOST || "0.0.0.0",
 		port: getPositiveInteger(env.PORT, 3000, { max: 65_535 }),
 		logLevel: env.LOG_LEVEL || "info",
-		trustProxy: parseTrustProxy(env.TRUST_PROXY),
-		allowedOrigins: new Set(parseCsv(
+		trustProxy: parseTrustProxy(env.TRUST_PROXY, warn),
+		allowedOrigins: new Set(parseAllowedOrigins(
 			env.METRICS_ALLOWED_ORIGINS,
-			DEFAULT_ALLOWED_ORIGINS,
+			warn,
 		)),
 		publicMetricsBaseUrl: getPublicHttpBaseUrl(
 			env.METRICS_PUBLIC_BASE_URL,
@@ -143,4 +216,6 @@ export {
 	getPublicHttpBaseUrl,
 	getRuntimeConfig,
 	loadMetricsAuthToken,
+	parseAllowedOrigins,
+	parseTrustProxy,
 };

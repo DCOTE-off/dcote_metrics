@@ -15,6 +15,7 @@
 	},
 	"dependencies": {
 		"@fastify/compress": "^9.1.0",
+		"@fastify/proxy-addr": "^5.1.0",
 		"@fastify/websocket": "^11.2.0",
 		"fastify": "^5.8.5",
 		"jassub": "2.5.6",

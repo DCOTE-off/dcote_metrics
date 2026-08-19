@@ -1,3 +1,5 @@
+import { timingSafeEqual } from "crypto";
+
 function createBoundedKeySet(limit) {
 	const keys = new Set();
 
@@ -55,10 +57,28 @@ function createFixedWindowRateLimiter({ limit, windowMs, maxKeys }) {
 	};
 }
 
+function tokensMatch(candidate, expected) {
+	if (!candidate || !expected) return false;
+	const candidateBuffer = Buffer.from(candidate);
+	const expectedBuffer = Buffer.from(expected);
+	return candidateBuffer.length === expectedBuffer.length
+		&& timingSafeEqual(candidateBuffer, expectedBuffer);
+}
+
+function isBearerTokenAuthenticated(req, token) {
+	const authorization = req.headers.authorization;
+	if (typeof authorization !== "string") return false;
+	const match = authorization.match(/^Bearer\s+(.+)$/i);
+	return tokensMatch(match?.[1], token);
+}
+
 function normalizeOrigin(value) {
 	if (!value || typeof value !== "string") return null;
 	try {
-		return new URL(value).origin;
+		const { origin } = new URL(value);
+		// Opaque-контексты (file:, data:, blob:) дают строковый "null",
+		// который иначе осел бы в allowlist как обычный источник.
+		return origin === "null" ? null : origin;
 	} catch {
 		return null;
 	}
@@ -79,6 +99,8 @@ export {
 	createBoundedKeySet,
 	createFixedWindowRateLimiter,
 	getSeriesKey,
+	isBearerTokenAuthenticated,
 	isRequestOriginAllowed,
 	normalizeOrigin,
+	tokensMatch,
 };
